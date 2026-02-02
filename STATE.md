@@ -1,52 +1,70 @@
-# AsteroidMiner — Sprint 4 Snapshot (Current Game State)
+# AsteroidMiner — Sprint 5 Snapshot (Current Game State)
 
 ## 🎯 Current Sprint Status
 
-**Sprint 4: Asteroid Stream Spawner System** ✅ COMPLETE
+**Sprint 5: Overlap Avoidance & Irregular Asteroid Shapes** ✅ COMPLETE
 
 ---
 
 ## 📋 Next Session Priorities
 
-1. **Implement collision avoidance during asteroid spawning**
-   - Check for overlaps before finalizing spawn position
-   - Reject positions that would cause asteroids to overlap
-   - Consider performance implications (spatial queries vs brute force)
-
-2. **Implement ship-asteroid collisions**
+1. **Implement ship-asteroid collisions**
    - Enable physics collisions between ship and asteroids
    - Ship is indestructible (for now) but can impart momentum to asteroids
    - Asteroids should collide with each other (chain reactions)
    - Discuss computational feasibility and optimization strategies
 
-3. **Add ship health/damage system** (after collisions work)
+2. **Add ship health/damage system** (after collisions work)
    - Implement life bar UI
    - Decrease health on asteroid collision
    - Consider damage scaling based on collision velocity/asteroid size
+
+3. **Visual polish**
+   - Ship sprite (needs pixel art per GDD)
+   - Background/starfield
+   - Thrust particle effects
 
 ---
 
 ## ⚠️ Known Issues / Technical Debt
 
-- Asteroids spawn with overlaps (no collision avoidance yet)
 - No collision detection between ship and asteroids
 - No collision response between asteroids themselves
+- Collision shape is CircleShape2D (base radius) while visual is irregular — minor mismatch at noise edges
 - Ship sprite is placeholder (needs pixel art per GDD)
 - No visual feedback for thrust (particle effects needed)
 - Tuning panel values not persisted between sessions
 - No background/stars
+- Cannot visually inspect asteroid chunks in Godot's 2D editor (Polygon2D visuals don't render in Remote view — would need debug draw or sprites)
 
 ---
 
 ## 📦 Recent Changes (Last Updated: February 2026)
 
-### Sprint 4: Asteroid Stream Spawner System
+### Sprint 5: Overlap Avoidance & Irregular Asteroid Shapes
+- ✅ Implemented spawn overlap avoidance via rejection sampling (up to 10 attempts per asteroid)
+- ✅ Overlap check uses full circle-circle intersection (sum of both radii)
+- ✅ Cross-chunk overlap avoidance — checks 8 neighboring chunks for boundary overlaps
+- ✅ Irregular asteroid shapes using layered Perlin noise (FastNoiseLite)
+- ✅ Noise sampled on unit circle in 2D noise space for seamless wrapping (no seam)
+- ✅ Base noise frequency scales with asteroid radius (small=smooth, large=more bumps)
+- ✅ Three noise layers gated by radius thresholds:
+  - Base layer (all asteroids): small surface bumps
+  - Medium layer (radius >= 60): broad lumps/dents
+  - Large layer (radius >= 120): overall shape warp/elongation
+- ✅ Each layer uses independent seed offset for uncorrelated patterns
+- ✅ `max_radius` tracked per asteroid (actual furthest vertex) for accurate overlap checks
+- ✅ Worst-case amplitude estimation for new asteroids during spawn checks
+- ✅ All noise parameters exported and tunable in Godot inspector via Asteroid.tscn
+- ✅ Deterministic shapes — each asteroid gets a seed from the chunk RNG
+
+### Sprint 4: Asteroid Stream Spawner System (Previous)
 - ✅ Implemented chunk-based infinite world streaming
 - ✅ Deterministic procedural generation per chunk (seeded RNG)
 - ✅ Power-law radius distribution (many small, few large asteroids)
 - ✅ Dynamic spawning based on ship position (spawn_radius)
 - ✅ Dynamic despawning of far asteroids (despawn_radius)
-- ✅ Chunk size auto-calculated from viewport (1.5× screen width)
+- ✅ Chunk size auto-calculated from viewport (1.5x screen width)
 - ✅ Density-based asteroid count per chunk (tunable via export vars)
 - ✅ Asteroids spawn with zero velocity (static relative to world)
 
@@ -62,11 +80,11 @@
 
 ## 🎮 What the Game Is Right Now
 
-A 2D top-down space traversal prototype. You pilot a ship with Asteroids-style thrust and turning in zero-gravity 2D space. The game generates an **infinite procedural asteroid field** using a chunk streaming system—asteroids spawn ahead of you and despawn behind as you explore. Fuel is a hard constraint: thrust consumes fuel continuously; when fuel hits zero the game pauses and shows an "OUT OF FUEL — Press R to restart" label.
+A 2D top-down space traversal prototype. You pilot a ship with Asteroids-style thrust and turning in zero-gravity 2D space. The game generates an **infinite procedural asteroid field** using a chunk streaming system — asteroids spawn ahead of you and despawn behind as you explore. Fuel is a hard constraint: thrust consumes fuel continuously; when fuel hits zero the game pauses and shows an "OUT OF FUEL — Press R to restart" label.
 
-The asteroid field feels infinite and coherent—revisiting the same world coordinates generates the same asteroids (deterministic). Asteroids vary in size following a power-law distribution (mostly small, occasionally large).
+The asteroid field feels infinite and coherent — revisiting the same world coordinates generates the same asteroids (deterministic). Asteroids vary in size following a power-law distribution (mostly small, occasionally large). **Asteroids have irregular, natural-looking shapes** generated via layered Perlin noise, with larger asteroids having more complex shapes (additional noise layers for broad lumps and overall shape warp). Asteroids **never overlap** thanks to rejection sampling with cross-chunk boundary checks.
 
-**Current limitations**: No mining mechanics, no collisions, asteroids spawn overlapped, no visual polish.
+**Current limitations**: No mining mechanics, no collisions, no visual polish.
 
 ---
 
@@ -89,7 +107,9 @@ Inside it:
   - `freeze = false` (not frozen, but have zero velocity)
   - `linear_velocity = Vector2.ZERO`
   - `angular_velocity = 0.0`
-  - Radius determines size (collision shape + visual)
+  - Radius determines size (collision shape = CircleShape2D, visual = irregular Polygon2D from noise)
+  - Each asteroid has a unique `noise_seed` for deterministic shape generation
+  - `max_radius` tracks the actual furthest vertex extent (used for overlap checks)
 
 ---
 
@@ -112,11 +132,12 @@ The code uses these actions (must exist in Input Map):
 ### Chunk Streaming System
 
 On `_ready()` it:
-1. Calculates `screen_size` from viewport and camera zoom
-2. Calculates `chunk_size = screen_size.x * chunk_size_multiplier` (default 1.5)
-3. Calculates `spawn_radius` and `despawn_radius` based on screen size multiples
-4. Initializes ship fuel, UI, and tuning panel
-5. Enables camera and prints debug info
+1. Caches worst-case noise amplitude from Asteroid.tscn defaults (sum of all layer amplitudes)
+2. Calculates `screen_size` from viewport and camera zoom
+3. Calculates `chunk_size = screen_size.x * chunk_size_multiplier` (default 1.5)
+4. Calculates `spawn_radius` and `despawn_radius` based on screen size multiples
+5. Initializes ship fuel, UI, and tuning panel
+6. Enables camera and prints debug info
 
 During `_process(delta)` it:
 - Updates the fuel bar every frame (normalized to max fuel)
@@ -130,16 +151,22 @@ During `_process(delta)` it:
 
 - `_update_chunk_system()`: Calls spawn and despawn logic
 - `_spawn_chunks_around(center)`: Iterates through chunk grid around ship, spawns any unvisited chunks within `spawn_radius`
-- `_spawn_chunk(chunk_key)`: 
+- `_spawn_chunk(chunk_key)`:
   - Seeds RNG deterministically using `_hash_chunk(chunk_key)`
-  - Calculates asteroid count based on `chunk_size² * asteroid_density`
-  - Generates random positions and power-law distributed radii
-  - Instantiates asteroids and stores them in `spawned_chunks` dictionary
+  - Calculates asteroid count based on `chunk_size^2 * asteroid_density`
+  - For each asteroid: samples radius, computes worst-case radius, tries up to 10 random positions
+  - Checks overlap against same-chunk asteroids (`_is_spawn_point_clear`) and neighboring chunks (`_is_clear_of_neighbors`)
+  - Skips asteroid if no valid position found after 10 attempts
+  - Passes deterministic `noise_seed` to each asteroid via `rng.randi()`
+  - Stores actual `max_radius` (post-noise) for future overlap checks
+  - Debug prints spawned/total count per chunk
 - `_despawn_far_asteroids(center)`: Removes asteroids beyond `despawn_radius`, cleans up empty chunks
+- `_is_spawn_point_clear()`: Checks new position against placed asteroids in current chunk, with distance culling using `max_placed_radius`
+- `_is_clear_of_neighbors()`: Checks new position against asteroids in 8 surrounding already-spawned chunks
 - `_world_to_chunk()` / `_chunk_to_world()`: Coordinate conversion helpers
 - `_hash_chunk()`: Deterministic seed generation combining `global_seed` with chunk coordinates
 - `_sample_power_law_radius()`: Power-law distribution for asteroid sizes
-- `_create_asteroid()`: Instantiates Asteroid.tscn with position and radius
+- `_create_asteroid()`: Instantiates Asteroid.tscn with position, radius, and noise seed
 
 **Key detail**: Fuel UI updates even when paused (because it's done in `_process`), but physics thrust won't run while paused.
 
@@ -177,21 +204,44 @@ Movement is split across callbacks:
 
 ## 🪨 Asteroid Logic (asteroid.gd)
 
-An asteroid is a **RigidBody2D** that can be "frozen" (static) and has a procedural circle visual + collision driven by its **radius**.
+An asteroid is a **RigidBody2D** with an irregular procedural visual and a circular collision shape driven by its **radius**.
 
 **Important behaviors**:
 
 - `radius` is an exported property with a setter. Setting it triggers `_apply_radius()` once the node is inside the tree; if assigned before `_ready()`, it sets a `_pending_radius_apply` flag and applies later.
 
-- `_apply_radius()` always creates a new **CircleShape2D** so collision shapes aren't shared between instances.
+- `_apply_radius()` always creates a new **CircleShape2D** (at base radius) so collision shapes aren't shared between instances.
 
 - `mass` is computed from area (PI * r^2 * density) with a minimum clamp.
 
-- `visual` is a Polygon2D generated as a 48-point circle polygon.
+- `visual` is a Polygon2D generated as a 48-point **irregular polygon** using layered Perlin noise.
+
+- `max_radius` tracks the actual furthest vertex distance from center (used by world.gd for overlap checks).
 
 - `frozen` sets `freeze = v` and uses `FREEZE_MODE_STATIC`.
 
-Right now, asteroids are effectively static landmarks (frozen true in the world spawner for Sprint 3, but support dynamic ones). The script supports dynamic asteroids with velocity, but chunk spawner sets them to zero velocity and `freeze = false`.
+### Noise Shape Generation (`_make_noisy_polygon`)
+
+Generates irregular asteroid shapes by sampling Perlin noise along a unit circle in 2D noise space (ensures seamless wrapping with no visible seam).
+
+**Three noise layers** (each with independent seed offset):
+
+| Layer | Threshold | Amplitude | Frequency | Effect |
+|-------|-----------|-----------|-----------|--------|
+| Base | All asteroids | 0.18 | 1.5-4.0 (lerped by radius) | Small surface bumps |
+| Medium | radius >= 60 | 0.12 | 0.8 | Broad lumps and dents |
+| Large | radius >= 120 | 0.15 | 0.4 | Overall shape warp / elongation |
+
+**Export variables** (tunable in Asteroid.tscn inspector):
+- `noise_amplitude`: Base layer displacement fraction (default 0.18)
+- `noise_freq_min` / `noise_freq_max`: Base frequency range (1.5 - 4.0)
+- `noise_radius_range`: Radius range for frequency lerp (16.0 - 192.0)
+- `medium_threshold`: Min radius for medium layer (default 60.0)
+- `medium_amplitude`: Medium layer displacement (default 0.12)
+- `medium_frequency`: Medium layer frequency (default 0.8)
+- `large_threshold`: Min radius for large layer (default 120.0)
+- `large_amplitude`: Large layer displacement (default 0.15)
+- `large_frequency`: Large layer frequency (default 0.4)
 
 ---
 
@@ -217,14 +267,14 @@ The tuning panel has sliders for:
 
 All sliders are connected to `_on_tuning_changed()` which calls `_apply_tuning_from_sliders()`. This reads slider values and assigns them to ship properties. Labels update to show current values.
 
-Values are **not persisted** between sessions—they reset to slider defaults on restart.
+Values are **not persisted** between sessions — they reset to slider defaults on restart.
 
 ---
 
 ## 🎨 Visual State
 
 - **Ship**: Placeholder sprite (needs proper pixel art per GDD visual constraints)
-- **Asteroids**: Procedural white circle polygons (48 vertices)
+- **Asteroids**: Procedural irregular white polygons (48 vertices, layered Perlin noise)
 - **Background**: Plain Godot default (needs starfield)
 - **UI**: Functional but basic styling
 
@@ -235,6 +285,8 @@ Values are **not persisted** between sessions—they reset to slider defaults on
 - Chunk system spawns/despawns efficiently based on distance
 - Deterministic generation means no cache needed for revisiting chunks (they regenerate identically)
 - Current density settings spawn ~10-20 asteroids per chunk
+- Overlap avoidance adds minor cost per chunk spawn (rejection sampling + neighbor checks)
+- Noise generation is one-time per asteroid at spawn (not per-frame)
 - No performance issues observed at default settings
 - Asteroids currently have no physics interactions (all static relative to world)
 
@@ -254,6 +306,14 @@ These are explicitly **out of scope** until core loop is complete:
 ## 🎓 Learning Notes
 
 This sprint taught:
+- **Rejection sampling** for overlap avoidance with graceful degradation
+- **Cross-chunk boundary checks** for seamless world generation
+- **Layered noise** for organic procedural shapes (multiple octaves at different scales)
+- **Perlin noise on a circle** — sampling 2D noise along a unit circle for seamless periodic patterns
+- **FastNoiseLite** usage in Godot (seed, frequency, noise type)
+- **max_radius tracking** for accurate collision estimation with irregular shapes
+
+Previous sprints:
 - **Chunk-based world streaming** for infinite procedural content
 - **Deterministic generation** using seeded RNG and hash functions
 - **Power-law distributions** for natural-looking size variation
@@ -265,16 +325,6 @@ This sprint taught:
 
 ## 📝 Implementation Notes for Next Sprint
 
-### Collision Avoidance During Spawn
-**Considerations**:
-- Need to check if new asteroid position overlaps with existing asteroids in chunk
-- Options:
-  1. **Brute force**: Check distance against all asteroids in current chunk (simple, works for low density)
-  2. **Rejection sampling**: Try random positions until non-overlapping found (may fail for high density)
-  3. **Spatial grid**: More complex but scales better
-- Recommend starting with rejection sampling with max attempts (e.g., 10 tries, then accept overlap)
-- Consider adding minimum spacing parameter (e.g., `radius_a + radius_b + min_gap`)
-
 ### Ship-Asteroid Collisions
 **Considerations**:
 - Enable collision layers/masks between ship and asteroids
@@ -285,6 +335,7 @@ This sprint taught:
 - May need collision damping to prevent excessive bouncing
 - Consider limiting number of "active" (non-sleeping) asteroids
 - Potential optimization: keep asteroids frozen until ship is nearby
+- **Collision shape vs visual mismatch**: CircleShape2D may not match irregular visual edges perfectly — consider if this feels OK during gameplay or if ConvexPolygonShape2D is needed
 
 ### Health System
 **Simple approach**:

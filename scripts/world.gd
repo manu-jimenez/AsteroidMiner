@@ -55,8 +55,14 @@ var screen_size: Vector2
 
 
 var AsteroidScene: PackedScene = preload("res://scenes/Asteroid.tscn")
+var _asteroid_max_amplitude: float = 0.45  # Cached worst-case total noise amplitude
 
 func _ready() -> void:
+	# Cache worst-case noise amplitude (sum of all layers) for overlap estimation
+	var _tmp := AsteroidScene.instantiate()
+	_asteroid_max_amplitude = _tmp.noise_amplitude + _tmp.medium_amplitude + _tmp.large_amplitude
+	_tmp.free()
+
 	# Calculate screen size and radii
 	var viewport_size := get_viewport().get_visible_rect().size
 	screen_size = viewport_size / cam.zoom if cam else viewport_size  # World units visible on screen
@@ -211,36 +217,63 @@ func _spawn_chunk(chunk_key: Vector2i) -> void:
 	var rng := RandomNumberGenerator.new()
 	var seed_value := _hash_chunk(chunk_key)
 	rng.seed = seed_value
-	
+
 	# Calculate chunk bounds
 	var chunk_origin := _chunk_to_world(chunk_key)
 	var chunk_area := chunk_size * chunk_size
-	
+
 	# Determine asteroid count based on density
 	var asteroid_count := int(chunk_area * asteroid_density)
 	asteroid_count = max(1, asteroid_count)  # At least 1 asteroid per chunk
-	
+
 	# Storage for this chunk's asteroids
 	var chunk_asteroids: Array[RigidBody2D] = []
-	
+
+	# Overlap avoidance: track placed positions/radii and largest radius
+	var placed: Array[Vector2] = []  # positions of placed asteroids
+	var placed_radii: Array[float] = []  # their radii
+	var max_placed_radius: float = 0.0
+
 	# Generate asteroids
+	var spawned := 0
 	for i in range(asteroid_count):
-		# Random position within chunk
-		var local_x := rng.randf() * chunk_size
-		var local_y := rng.randf() * chunk_size
-		var world_pos := chunk_origin + Vector2(local_x, local_y)
-		
 		# Sample radius from power-law distribution
 		var radius := _sample_power_law_radius(rng)
-		
-		# Spawn asteroid
-		var asteroid := _create_asteroid(world_pos, radius)
+
+		# Use worst-case radius for the new asteroid (max possible noise expansion)
+		var worst_case_radius := radius * (1.0 + _asteroid_max_amplitude)
+
+		# Try to find a non-overlapping position
+		var world_pos := Vector2.ZERO
+		var valid := false
+		for attempt in range(10):
+			var local_x := rng.randf() * chunk_size
+			var local_y := rng.randf() * chunk_size
+			world_pos = chunk_origin + Vector2(local_x, local_y)
+
+			if _is_spawn_point_clear(world_pos, worst_case_radius, placed, placed_radii, max_placed_radius) \
+					and _is_clear_of_neighbors(world_pos, worst_case_radius, chunk_key):
+				valid = true
+				break
+
+		if not valid:
+			continue  # Skip this asteroid
+
+		# Spawn asteroid with deterministic noise seed
+		var asteroid_seed := rng.randi()
+		var asteroid := _create_asteroid(world_pos, radius, asteroid_seed)
 		chunk_asteroids.append(asteroid)
-	
+		placed.append(world_pos)
+		# Store actual max_radius (accounts for real noise) for future overlap checks
+		placed_radii.append(asteroid.max_radius)
+		if asteroid.max_radius > max_placed_radius:
+			max_placed_radius = asteroid.max_radius
+		spawned += 1
+
 	# Register chunk
 	spawned_chunks[chunk_key] = chunk_asteroids
-	
-	print("[Chunk System] Spawned chunk ", chunk_key, " with ", asteroid_count, " asteroids")
+
+	print("[Chunk System] Spawned chunk ", chunk_key, " with ", spawned, "/", asteroid_count, " asteroids")
 
 
 func _despawn_far_asteroids(center: Vector2) -> void:
@@ -278,6 +311,39 @@ func _despawn_far_asteroids(center: Vector2) -> void:
 # ============================================================
 # HELPER METHODS
 # ============================================================
+
+func _is_spawn_point_clear(pos: Vector2, radius: float, placed: Array[Vector2],
+		placed_radii: Array[float], max_placed_radius: float) -> bool:
+	"""Check that pos doesn't overlap any already-placed asteroid."""
+	# Only asteroids within this distance could possibly overlap
+	var cull_dist := radius + max_placed_radius
+	for j in range(placed.size()):
+		var dist := pos.distance_to(placed[j])
+		if dist > cull_dist:
+			continue
+		# Circles overlap if distance between centers < sum of radii
+		if dist < placed_radii[j] + radius:
+			return false
+	return true
+
+
+func _is_clear_of_neighbors(pos: Vector2, radius: float, current_chunk: Vector2i) -> bool:
+	"""Check that pos doesn't overlap asteroids in already-spawned neighboring chunks."""
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			if dx == 0 and dy == 0:
+				continue  # Skip current chunk (already checked)
+			var neighbor_key := Vector2i(current_chunk.x + dx, current_chunk.y + dy)
+			if neighbor_key not in spawned_chunks:
+				continue
+			for asteroid in spawned_chunks[neighbor_key]:
+				if not is_instance_valid(asteroid):
+					continue
+				var dist := pos.distance_to(asteroid.global_position)
+				if dist < asteroid.max_radius + radius:
+					return false
+	return true
+
 
 func _world_to_chunk(world_pos: Vector2) -> Vector2i:
 	"""Convert world position to chunk coordinates."""
@@ -317,11 +383,14 @@ func _sample_power_law_radius(rng: RandomNumberGenerator) -> float:
 	return clamp(radius, radius_min, radius_max)
 
 
-func _create_asteroid(world_pos: Vector2, radius: float) -> RigidBody2D:
+func _create_asteroid(world_pos: Vector2, radius: float, asteroid_seed: int = 0) -> RigidBody2D:
 	"""Create an asteroid RigidBody2D at position with given radius."""
 	# Load the asteroid scene (reuse existing scene)
 	var asteroid: RigidBody2D = AsteroidScene.instantiate()
-	
+
+	# Set noise seed before radius so the shape is ready when _apply_radius runs
+	asteroid.noise_seed = asteroid_seed
+
 	# Set properties
 	asteroid.position = world_pos
 	asteroid.radius = radius  # This will trigger the asteroid's setter
