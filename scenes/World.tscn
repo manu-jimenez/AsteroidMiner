@@ -1,12 +1,23 @@
-[gd_scene load_steps=3 format=3 uid="uid://bs7c3tmgq5x07"]
+[gd_scene load_steps=4 format=3 uid="uid://bs7c3tmgq5x07"]
 
 [ext_resource type="Script" uid="uid://b6lhl1l4oldrr" path="res://scripts/world.gd" id="1_32lhk"]
+[ext_resource type="Texture2D" path="res://assets/2d_starfield_1.png" id="2_7g83o"]
 [ext_resource type="PackedScene" uid="uid://bdxf5qro8som2" path="res://scenes/Ship.tscn" id="2_32lhk"]
 
 [node name="World" type="Node2D"]
 process_mode = 3
 position = Vector2(-1, 0)
 script = ExtResource("1_32lhk")
+
+[node name="ParallaxBackground" type="ParallaxBackground" parent="."]
+
+[node name="ParallaxLayer" type="ParallaxLayer" parent="ParallaxBackground"]
+motion_scale = Vector2(0.1, 0.1)
+motion_mirroring = Vector2(2048, 2048)
+
+[node name="Sprite2D" type="Sprite2D" parent="ParallaxBackground/ParallaxLayer"]
+centered = false
+texture = ExtResource("2_7g83o")
 
 [node name="Ship" parent="." instance=ExtResource("2_32lhk")]
 process_mode = 3
@@ -84,20 +95,6 @@ focus_mode = 0
 max_value = 60.0
 value = 1.0
 
-[node name="HBoxMaxFuel" type="HBoxContainer" parent="UI/TuningPanel/VBox"]
-layout_mode = 2
-
-[node name="LabelMaxFuel" type="Label" parent="UI/TuningPanel/VBox/HBoxMaxFuel"]
-layout_mode = 2
-
-[node name="HSliderMaxFuel" type="HSlider" parent="UI/TuningPanel/VBox/HBoxMaxFuel"]
-layout_mode = 2
-size_flags_horizontal = 3
-focus_mode = 0
-min_value = 100.0
-max_value = 1000.0
-value = 500.0
-
 [node name="GameOverLabel" type="Label" parent="UI"]
 visible = false
 anchors_preset = 8
@@ -105,10 +102,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -83.5
-offset_top = 571.5
-offset_right = 83.5
-offset_bottom = 630.5
+offset_left = -150.0
+offset_top = -30.0
+offset_right = 150.0
+offset_bottom = 30.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 20
@@ -134,3 +131,60 @@ custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 max_value = 1.0
 value = 1.0
+
+[node name="StartMenu" type="CanvasLayer" parent="."]
+layer = 10
+process_mode = 3
+
+[node name="CenterContainer" type="CenterContainer" parent="StartMenu"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="StartMenu/CenterContainer"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="StartMenu/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 40
+text = "ASTEROID MINER"
+horizontal_alignment = 1
+
+[node name="Spacer1" type="Control" parent="StartMenu/CenterContainer/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 30)
+
+[node name="AlphaBox" type="HBoxContainer" parent="StartMenu/CenterContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="AlphaLabel" type="Label" parent="StartMenu/CenterContainer/VBoxContainer/AlphaBox"]
+layout_mode = 2
+text = "Power-Law Alpha: "
+
+[node name="AlphaSlider" type="HSlider" parent="StartMenu/CenterContainer/VBoxContainer/AlphaBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(200, 0)
+focus_mode = 0
+min_value = 1.5
+max_value = 4.0
+step = 0.1
+value = 2.2
+
+[node name="AlphaValue" type="Label" parent="StartMenu/CenterContainer/VBoxContainer/AlphaBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(40, 0)
+text = "2.2"
+
+[node name="Spacer2" type="Control" parent="StartMenu/CenterContainer/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
+
+[node name="StartLabel" type="Label" parent="StartMenu/CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Press any key to start"
+horizontal_alignment = 1

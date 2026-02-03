@@ -1,8 +1,8 @@
-# AsteroidMiner — Sprint 5 Snapshot (Current Game State)
+# AsteroidMiner — Sprint 6 Snapshot (Current Game State)
 
 ## 🎯 Current Sprint Status
 
-**Sprint 5: Overlap Avoidance & Irregular Asteroid Shapes** ✅ COMPLETE
+**Sprint 6: Background, Start Menu & UI Cleanup** ✅ COMPLETE
 
 ---
 
@@ -34,12 +34,22 @@
 - Ship sprite is placeholder (needs pixel art per GDD)
 - No visual feedback for thrust (particle effects needed)
 - Tuning panel values not persisted between sessions
-- No background/stars
 - Cannot visually inspect asteroid chunks in Godot's 2D editor (Polygon2D visuals don't render in Remote view — would need debug draw or sprites)
 
 ---
 
 ## 📦 Recent Changes (Last Updated: February 2026)
+
+### Sprint 6: Background, Start Menu & UI Cleanup
+- ✅ Added seamless tileable starfield background (ParallaxBackground with 0.1x motion scale)
+- ✅ Background texture: "2D Starfield 1" from SpaceSphereMaps (2048×2048, free license)
+- ✅ Added start menu screen with title "ASTEROID MINER" and "Press any key to start"
+- ✅ Start menu includes power-law alpha slider (1.5–4.0) for tweaking asteroid size distribution before gameplay
+- ✅ Game stays frozen on menu until player presses any key (uses `_unhandled_input` so slider clicks don't trigger start)
+- ✅ Removed max fuel slider — max fuel hardcoded to 100
+- ✅ Fixed GameOverLabel positioning (was offset off-screen, now centered)
+- ✅ Fixed restart crash (added `return` after `reload_current_scene()` to prevent accessing freed nodes)
+- ✅ Added credits section to GDD.md
 
 ### Sprint 5: Overlap Avoidance & Irregular Asteroid Shapes
 - ✅ Implemented spawn overlap avoidance via rejection sampling (up to 10 attempts per asteroid)
@@ -80,11 +90,11 @@
 
 ## 🎮 What the Game Is Right Now
 
-A 2D top-down space traversal prototype. You pilot a ship with Asteroids-style thrust and turning in zero-gravity 2D space. The game generates an **infinite procedural asteroid field** using a chunk streaming system — asteroids spawn ahead of you and despawn behind as you explore. Fuel is a hard constraint: thrust consumes fuel continuously; when fuel hits zero the game pauses and shows an "OUT OF FUEL — Press R to restart" label.
+A 2D top-down space traversal prototype. The game opens with a **start menu** showing "ASTEROID MINER" over a scrolling starfield background, where you can tweak the power-law alpha parameter before pressing any key to start. You pilot a ship with Asteroids-style thrust and turning in zero-gravity 2D space. The game generates an **infinite procedural asteroid field** using a chunk streaming system — asteroids spawn ahead of you and despawn behind as you explore. Fuel is a hard constraint (max 100): thrust consumes fuel continuously; when fuel hits zero the game pauses and shows a centered "OUT OF FUEL — Press R to restart" label.
 
 The asteroid field feels infinite and coherent — revisiting the same world coordinates generates the same asteroids (deterministic). Asteroids vary in size following a power-law distribution (mostly small, occasionally large). **Asteroids have irregular, natural-looking shapes** generated via layered Perlin noise, with larger asteroids having more complex shapes (additional noise layers for broad lumps and overall shape warp). Asteroids **never overlap** thanks to rejection sampling with cross-chunk boundary checks.
 
-**Current limitations**: No mining mechanics, no collisions, no visual polish.
+**Current limitations**: No mining mechanics, no collisions, ship sprite is placeholder.
 
 ---
 
@@ -94,14 +104,20 @@ The asteroid field feels infinite and coherent — revisiting the same world coo
 
 Inside it:
 
+- **ParallaxBackground** → ParallaxLayer (motion_scale 0.1, mirroring 2048×2048) → Sprite2D (starfield texture, centered=false)
+
 - **Ship** is an instanced Ship.tscn and is a RigidBody2D with the Ship script attached. It has `lock_rotation = true` at the node level, and contains Camera2D as a child.
 
 - **Camera2D** is enabled and uses position smoothing.
 
 - **UI** (CanvasLayer) contains:
-  - **TuningPanel** (PanelContainer) → VBoxContainer → five rows, each row has a label + slider for thrust, damp, turn, fuel burn, max fuel.
-  - **GameOverLabel** (Label) hidden by default, centered-ish, shows the out-of-fuel message.
-  - **FuelBox** (VBoxContainer) at bottom-left-ish: FuelLabel ("Fuel") + FuelBar (ProgressBar). The bar is normalized to [0,1] by setting `value = fuel/max_fuel`.
+  - **TuningPanel** (PanelContainer) → VBoxContainer → four rows, each row has a label + slider for thrust, damp, turn, fuel burn.
+  - **GameOverLabel** (Label) hidden by default, centered on screen, shows the out-of-fuel message.
+  - **FuelBox** (VBoxContainer) at bottom-left: FuelLabel ("Fuel") + FuelBar (ProgressBar). The bar is normalized to [0,1] by setting `value = fuel/max_fuel`.
+
+- **StartMenu** (CanvasLayer, layer=10) contains:
+  - CenterContainer → VBoxContainer with title label, power-law alpha slider (1.5–4.0), and "Press any key to start" label.
+  - Hidden after game starts. Reappears on restart (scene reload).
 
 - **Asteroids** are spawned dynamically as children of World using the chunk streaming system. They are RigidBody2D instances from Asteroid.tscn with:
   - `freeze = false` (not frozen, but have zero velocity)
@@ -140,12 +156,18 @@ On `_ready()` it:
 6. Enables camera and prints debug info
 
 During `_process(delta)` it:
+- Handles "restart" (always available, even on menu) — unpauses and reloads scene, then returns immediately to avoid accessing freed nodes
+- If `game_started` is false, returns early (menu is showing)
 - Updates the fuel bar every frame (normalized to max fuel)
 - Checks game over: if `ship.fuel <= 0` and not already game over, sets `is_game_over = true`, shows the label, pauses the tree, and forces the ship to high damp so it stops moving
-- Handles "restart" by unpausing and reloading the current scene
 - Toggles tuning panel visibility
 - Toggles pause (only if not game over)
 - **Calls `_update_chunk_system()`** every frame when not paused
+
+Start menu logic:
+- `_unhandled_input()` detects any key/click/button press and calls `_start_game()`
+- `_start_game()` sets `game_started = true`, hides menu, shows ship + UI, unfreezes ship
+- `_on_alpha_slider_changed()` updates `power_law_alpha` in real-time from slider
 
 ### Chunk System Methods
 
@@ -263,7 +285,8 @@ The tuning panel has sliders for:
 - Linear damping
 - Turn speed
 - Fuel burn rate
-- Max fuel capacity
+
+Max fuel is hardcoded to 100.
 
 All sliders are connected to `_on_tuning_changed()` which calls `_apply_tuning_from_sliders()`. This reads slider values and assigns them to ship properties. Labels update to show current values.
 
@@ -275,7 +298,7 @@ Values are **not persisted** between sessions — they reset to slider defaults 
 
 - **Ship**: Placeholder sprite (needs proper pixel art per GDD visual constraints)
 - **Asteroids**: Procedural irregular white polygons (48 vertices, layered Perlin noise)
-- **Background**: Plain Godot default (needs starfield)
+- **Background**: Seamless tileable starfield (ParallaxBackground, 0.1x parallax scroll)
 - **UI**: Functional but basic styling
 
 ---
@@ -306,6 +329,12 @@ These are explicitly **out of scope** until core loop is complete:
 ## 🎓 Learning Notes
 
 This sprint taught:
+- **ParallaxBackground** for depth illusion with slow-scrolling starfield
+- **`_unhandled_input` vs `_input`** — GUI nodes consume events first, so slider clicks don't trigger "any key" detection
+- **State gating with booleans** — `game_started` splits `_process()` into menu vs gameplay, same pattern as `is_game_over`
+- **Scene reload pitfall** — `reload_current_scene()` starts freeing immediately; must `return` to avoid null access on the dying node
+
+Previous sprint taught:
 - **Rejection sampling** for overlap avoidance with graceful degradation
 - **Cross-chunk boundary checks** for seamless world generation
 - **Layered noise** for organic procedural shapes (multiple octaves at different scales)

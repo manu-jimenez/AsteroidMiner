@@ -248,7 +248,7 @@ Silence is allowed and encouraged.
 
 **Next sprints:**
 
-* Background and first visual assets for asteroids
+* ~~Background and first visual assets for asteroids~~ → Background implemented (starfield parallax), start menu added
 * Collisions
 * Asteroid splitting
 * Stream velocity
@@ -262,6 +262,18 @@ Silence is allowed and encouraged.
 * Complex story or lore
 * Large NPC factions
 * Hard-science simulation
+
+---
+
+---
+
+## 16. Credits
+
+### Assets
+
+| Asset | Source | License |
+|-------|--------|---------|
+| 2D Starfield 1 (background) | [SpaceSphereMaps](https://www.spacespheremaps.com/2d-starfield-textures/) | Free for personal and commercial use ([terms](https://www.spacespheremaps.com/licensing-terms/)) |
 
 ---
 

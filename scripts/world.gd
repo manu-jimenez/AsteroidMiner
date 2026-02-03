@@ -6,6 +6,12 @@ extends Node2D
 
 @onready var game_over_label: Label = $UI/GameOverLabel
 var is_game_over := false
+var game_started := false
+
+# Start menu references
+@onready var start_menu: CanvasLayer = $StartMenu
+@onready var sld_alpha: HSlider = $StartMenu/CenterContainer/VBoxContainer/AlphaBox/AlphaSlider
+@onready var lbl_alpha_value: Label = $StartMenu/CenterContainer/VBoxContainer/AlphaBox/AlphaValue
 
 @onready var ship: Ship = $Ship
 var cam: Camera2D
@@ -19,8 +25,6 @@ var cam: Camera2D
 @onready var lbl_turn: Label = $UI/TuningPanel/VBox/HBoxTurn/LabelTurn
 @onready var sld_fuel_burn: HSlider = $UI/TuningPanel/VBox/HBoxFuelBurn/HSliderFuelBurn
 @onready var lbl_fuel_burn: Label = $UI/TuningPanel/VBox/HBoxFuelBurn/LabelFuelBurn
-@onready var sld_max_fuel: HSlider = $UI/TuningPanel/VBox/HBoxMaxFuel/HSliderMaxFuel
-@onready var lbl_max_fuel: Label = $UI/TuningPanel/VBox/HBoxMaxFuel/LabelMaxFuel
 
 
 # ============================================================
@@ -99,7 +103,6 @@ func _ready() -> void:
 	sld_damp.value_changed.connect(_on_tuning_changed)
 	sld_turn.value_changed.connect(_on_tuning_changed)
 	sld_fuel_burn.value_changed.connect(_on_tuning_changed)
-	sld_max_fuel.value_changed.connect(_on_tuning_changed)
 	
 	get_tree().paused = false
 	print("World ready. paused =", get_tree().paused)
@@ -109,23 +112,39 @@ func _ready() -> void:
 	print("Camera enabled=", cam.enabled)
 	print("Active viewport cam =", get_viewport().get_camera_2d(), " my cam =", cam)
 
+	# Start menu setup: sync slider to current power_law_alpha and connect signal
+	sld_alpha.value = power_law_alpha
+	lbl_alpha_value.text = "%.1f" % power_law_alpha
+	sld_alpha.value_changed.connect(_on_alpha_slider_changed)
+
+	# Hide gameplay elements until the player starts
+	ship.visible = false
+	ship.freeze = true
+	$UI.visible = false
+
 
 func _process(_delta: float) -> void:
-	_update_fuel_ui()
-	_check_game_over()
-	
+	# Restart is always available (menu or gameplay)
 	if Input.is_action_just_pressed("restart"):
 		get_tree().paused = false
 		get_tree().reload_current_scene()
-	
+		return  # Scene is being freed; don't access anything else
+
+	# Everything below only runs after the player starts the game
+	if not game_started:
+		return
+
+	_update_fuel_ui()
+	_check_game_over()
+
 	if Input.is_action_just_pressed("toggle_tuning"):
 		$UI/TuningPanel.visible = not $UI/TuningPanel.visible
-		
+
 	if Input.is_action_just_pressed("pause") and not is_game_over:
 		get_tree().paused = not get_tree().paused
 		print("PAUSED =", get_tree().paused)
-	
-	# === NEW: Update chunk streaming system ===
+
+	# Update chunk streaming system
 	if not get_tree().paused:
 		_update_chunk_system()
 
@@ -149,6 +168,46 @@ func _check_game_over() -> void:
 		# Set linear damp high so the ship stops
 		ship.linear_damp = sld_damp.max_value
 	
+# ============================================================
+# START MENU
+# ============================================================
+
+func _unhandled_input(event: InputEvent) -> void:
+	"""Detect 'any key' press to start the game from the menu.
+	Uses _unhandled_input (not _input) so that slider mouse interactions
+	are consumed by the GUI first and don't accidentally trigger game start."""
+	if game_started:
+		return
+
+	# Only react to actual presses (not releases, mouse motion, or key repeats)
+	if event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton:
+		if event.is_pressed() and not event.is_echo():
+			_start_game()
+
+
+func _on_alpha_slider_changed(value: float) -> void:
+	"""Update power_law_alpha in real-time as the player adjusts the slider."""
+	power_law_alpha = value
+	lbl_alpha_value.text = "%.1f" % value
+
+
+func _start_game() -> void:
+	"""Transition from menu to gameplay."""
+	game_started = true
+
+	# Hide menu, show gameplay elements
+	start_menu.visible = false
+	ship.visible = true
+	ship.freeze = false
+	$UI.visible = true
+
+	# Initialize ship fuel
+	ship.refuel_full()
+	_update_fuel_ui()
+
+	print("Game started! power_law_alpha = ", power_law_alpha)
+
+
 func _on_tuning_changed(_v: float) -> void:
 	_apply_tuning_from_sliders()
 
@@ -157,20 +216,18 @@ func _apply_tuning_from_sliders() -> void:
 	var damp := float(sld_damp.value)
 	var turn := float(sld_turn.value)
 	var fuel_burn := float(sld_fuel_burn.value)
-	var max_fuel := float(sld_max_fuel.value)
-	
+
 	# Ship script variables
 	ship.thrust_force = thrust
 	ship.turn_speed = turn
 	ship.linear_damp = damp 	# Propiedad directa del RigidBody2D
 	ship.fuel_burn_per_sec = fuel_burn
-	ship.max_fuel = max_fuel
-	
+	ship.max_fuel = 100.0
+
 	lbl_thrust.text = "Thrust: %d" % int(thrust)
 	lbl_damp.text = "Linear damp: %.2f" % damp
 	lbl_turn.text = "Turn: %.1f" % turn
 	lbl_fuel_burn.text = "Fuel burn: %.0f/s" % fuel_burn
-	lbl_max_fuel.text = "Max fuel: %.0f" % max_fuel
 
 
 # ============================================================
