@@ -3,6 +3,10 @@
 [ext_resource type="Script" uid="uid://bf1gacwe5dcsi" path="res://scripts/ship.gd" id="1_ln6wt"]
 
 [node name="Ship" type="RigidBody2D"]
+collision_layer = 1
+collision_mask = 2
+contact_monitor = true
+max_contacts_reported = 4
 script = ExtResource("1_ln6wt")
 
 [node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="."]

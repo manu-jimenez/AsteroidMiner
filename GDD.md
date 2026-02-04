@@ -249,7 +249,7 @@ Silence is allowed and encouraged.
 **Next sprints:**
 
 * ~~Background and first visual assets for asteroids~~ → Background implemented (starfield parallax), start menu added
-* Collisions
+* ~~Collisions~~ → Implemented: impulse-based damage, momentum exchange, collision layers, asteroid rotation
 * Asteroid splitting
 * Stream velocity
 * Basic enemies / hazards

@@ -1,8 +1,10 @@
 # scripts/world.gd
 extends Node2D
 
-@onready var fuel_bar: ProgressBar = $UI/FuelBox/FuelBar
-@onready var fuel_label: Label = $UI/FuelBox/FuelLabel
+@onready var fuel_bar: ProgressBar = $UI/StatusBars/FuelBox/FuelBar
+@onready var fuel_label: Label = $UI/StatusBars/FuelBox/FuelLabel
+@onready var health_bar: ProgressBar = $UI/StatusBars/HealthBox/HealthBar
+@onready var health_label: Label = $UI/StatusBars/HealthBox/HealthLabel
 
 @onready var game_over_label: Label = $UI/GameOverLabel
 var is_game_over := false
@@ -12,6 +14,8 @@ var game_started := false
 @onready var start_menu: CanvasLayer = $StartMenu
 @onready var sld_alpha: HSlider = $StartMenu/CenterContainer/VBoxContainer/AlphaBox/AlphaSlider
 @onready var lbl_alpha_value: Label = $StartMenu/CenterContainer/VBoxContainer/AlphaBox/AlphaValue
+@onready var sld_density: HSlider = $StartMenu/CenterContainer/VBoxContainer/DensityBox/DensitySlider
+@onready var lbl_density_value: Label = $StartMenu/CenterContainer/VBoxContainer/DensityBox/DensityValue
 
 @onready var ship: Ship = $Ship
 var cam: Camera2D
@@ -25,6 +29,8 @@ var cam: Camera2D
 @onready var lbl_turn: Label = $UI/TuningPanel/VBox/HBoxTurn/LabelTurn
 @onready var sld_fuel_burn: HSlider = $UI/TuningPanel/VBox/HBoxFuelBurn/HSliderFuelBurn
 @onready var lbl_fuel_burn: Label = $UI/TuningPanel/VBox/HBoxFuelBurn/LabelFuelBurn
+@onready var sld_dmg: HSlider = $UI/TuningPanel/VBox/HBoxDmg/HSliderDmg
+@onready var lbl_dmg: Label = $UI/TuningPanel/VBox/HBoxDmg/LabelDmg
 
 
 # ============================================================
@@ -34,7 +40,7 @@ var cam: Camera2D
 # Chunk system configuration
 var chunk_size: float  # Calculated from viewport (1.5 * screen width)
 @export var chunk_size_multiplier: float = 1.5  # How many screens wide is a chunk
-@export var asteroid_density: float = 0.00003  # Asteroids per square world unit
+@export var asteroid_density: float = 0.00001  # Asteroids per square world unit
 
 # Spawn/despawn configuration (as multiples of screen size)
 @export var spawn_radius_screens: float = 3.5  # How many screens away to spawn chunks
@@ -95,7 +101,9 @@ func _ready() -> void:
 	_apply_tuning_from_sliders()
 	
 	ship.refuel_full()
+	ship.heal_full()
 	_update_fuel_ui()
+	_update_health_ui()
 	game_over_label.visible = false
 	
 	# Conecta señales
@@ -103,6 +111,7 @@ func _ready() -> void:
 	sld_damp.value_changed.connect(_on_tuning_changed)
 	sld_turn.value_changed.connect(_on_tuning_changed)
 	sld_fuel_burn.value_changed.connect(_on_tuning_changed)
+	sld_dmg.value_changed.connect(_on_tuning_changed)
 	
 	get_tree().paused = false
 	print("World ready. paused =", get_tree().paused)
@@ -112,10 +121,15 @@ func _ready() -> void:
 	print("Camera enabled=", cam.enabled)
 	print("Active viewport cam =", get_viewport().get_camera_2d(), " my cam =", cam)
 
-	# Start menu setup: sync slider to current power_law_alpha and connect signal
+	# Start menu setup: sync sliders to current values and connect signals
 	sld_alpha.value = power_law_alpha
 	lbl_alpha_value.text = "%.1f" % power_law_alpha
 	sld_alpha.value_changed.connect(_on_alpha_slider_changed)
+
+	# Density slider: value is a multiplier (0.2x – 2.0x), default 1.0x
+	sld_density.value = 1.0
+	lbl_density_value.text = "1.0x"
+	sld_density.value_changed.connect(_on_density_slider_changed)
 
 	# Hide gameplay elements until the player starts
 	ship.visible = false
@@ -135,6 +149,7 @@ func _process(_delta: float) -> void:
 		return
 
 	_update_fuel_ui()
+	_update_health_ui()
 	_check_game_over()
 
 	if Input.is_action_just_pressed("toggle_tuning"):
@@ -144,7 +159,7 @@ func _process(_delta: float) -> void:
 		get_tree().paused = not get_tree().paused
 		print("PAUSED =", get_tree().paused)
 
-	# Update chunk streaming system
+	# Update asteroids chunk streaming system
 	if not get_tree().paused:
 		_update_chunk_system()
 
@@ -152,20 +167,32 @@ func _process(_delta: float) -> void:
 func _update_fuel_ui() -> void:
 	var maxf: float = max(1.0, ship.max_fuel)
 	var f: float = clamp(ship.fuel, 0.0, maxf)
-	
+
 	fuel_bar.value = f / maxf
+
+
+func _update_health_ui() -> void:
+	var maxh: float = max(1.0, ship.max_health)
+	var h: float = clamp(ship.health, 0.0, maxh)
+
+	health_bar.value = h / maxh
 
 
 func _check_game_over() -> void:
 	if is_game_over:
 		return
-	
+
 	if ship.fuel <= 0.0:
 		is_game_over = true
+		game_over_label.text = "OUT OF FUEL\nPress R to restart"
 		game_over_label.visible = true
-		# Optional: freeze world physics but keep UI
 		get_tree().paused = true
-		# Set linear damp high so the ship stops
+		ship.linear_damp = sld_damp.max_value
+	elif ship.health <= 0.0:
+		is_game_over = true
+		game_over_label.text = "SHIP DESTROYED\nPress R to restart"
+		game_over_label.visible = true
+		get_tree().paused = true
 		ship.linear_damp = sld_damp.max_value
 	
 # ============================================================
@@ -191,6 +218,13 @@ func _on_alpha_slider_changed(value: float) -> void:
 	lbl_alpha_value.text = "%.1f" % value
 
 
+func _on_density_slider_changed(value: float) -> void:
+	"""Update asteroid_density based on multiplier slider (0.2x – 2.0x)."""
+	var default_density: float = 0.00003
+	asteroid_density = default_density * value
+	lbl_density_value.text = "%.1fx" % value
+
+
 func _start_game() -> void:
 	"""Transition from menu to gameplay."""
 	game_started = true
@@ -201,9 +235,11 @@ func _start_game() -> void:
 	ship.freeze = false
 	$UI.visible = true
 
-	# Initialize ship fuel
+	# Initialize ship
 	ship.refuel_full()
+	ship.heal_full()
 	_update_fuel_ui()
+	_update_health_ui()
 
 	print("Game started! power_law_alpha = ", power_law_alpha)
 
@@ -216,6 +252,7 @@ func _apply_tuning_from_sliders() -> void:
 	var damp := float(sld_damp.value)
 	var turn := float(sld_turn.value)
 	var fuel_burn := float(sld_fuel_burn.value)
+	var dmg := float(sld_dmg.value)
 
 	# Ship script variables
 	ship.thrust_force = thrust
@@ -223,11 +260,13 @@ func _apply_tuning_from_sliders() -> void:
 	ship.linear_damp = damp 	# Propiedad directa del RigidBody2D
 	ship.fuel_burn_per_sec = fuel_burn
 	ship.max_fuel = 100.0
+	ship.damage_per_impulse = dmg
 
 	lbl_thrust.text = "Thrust: %d" % int(thrust)
 	lbl_damp.text = "Linear damp: %.2f" % damp
 	lbl_turn.text = "Turn: %.1f" % turn
 	lbl_fuel_burn.text = "Fuel burn: %.0f/s" % fuel_burn
+	lbl_dmg.text = "Dmg/impulse: %.4f" % dmg
 
 
 # ============================================================
@@ -452,12 +491,14 @@ func _create_asteroid(world_pos: Vector2, radius: float, asteroid_seed: int = 0)
 	asteroid.position = world_pos
 	asteroid.radius = radius  # This will trigger the asteroid's setter
 	
-	# Static for this sprint (no velocity)
+	# No initial velocity (stream velocity deferred to later sprint)
 	asteroid.linear_velocity = Vector2.ZERO
 	asteroid.angular_velocity = 0.0
-	asteroid.freeze = false  # Not frozen, but no forces applied
-	
-	# Add to scene
+
+	# Add to scene FIRST — _ready() runs here and calls set_frozen(frozen=true)
 	add_child(asteroid)
-	
+
+	# THEN unfreeze — must come after add_child or _ready() will override it
+	asteroid.frozen = false
+
 	return asteroid

@@ -3,7 +3,12 @@ extends RigidBody2D
 class_name Asteroid
 
 @export var radius: float = 48.0 : set = set_radius
-@export var density: float = 1.0
+# Density for mass calculation: mass = PI * radius² * density.
+# At density 0.25, a small asteroid (r=16) has mass ~200 (≈ ship mass),
+# a medium one (r=48) has mass ~1800, and a large one (r=192) has mass ~29000.
+# This means the ship can knock small rocks around, nudge medium ones,
+# and barely dent the big ones — which feels physically right.
+@export var density: float = 0.25
 @export var frozen: bool = true : set = set_frozen
 
 # Irregular shape generation — layered noise
@@ -35,7 +40,7 @@ func _ready() -> void:
 	gravity_scale = 0.0
 	linear_damp = 0.2
 	angular_damp = 0.2
-	lock_rotation = true
+	lock_rotation = false  # Allow rotation from collisions
 
 	set_frozen(frozen)
 
@@ -49,7 +54,9 @@ func _ready() -> void:
 func set_frozen(v: bool) -> void:
 	frozen = v
 	freeze = v
-	freeze_mode = RigidBody2D.FREEZE_MODE_STATIC
+	# KINEMATIC so that when unfrozen, the body behaves as a normal dynamic RigidBody2D.
+	# STATIC would give it infinite mass during collision resolution, making it immovable.
+	freeze_mode = RigidBody2D.FREEZE_MODE_KINEMATIC
 
 func set_radius(r: float) -> void:
 	radius = max(r, 6.0)
