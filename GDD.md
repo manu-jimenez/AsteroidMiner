@@ -92,16 +92,40 @@ The illusion is that the ship moves through the stream, not that the stream is g
 
 ### 5.2 Sprite Generation
 
-Preferred approach:
+**Current approach (Sprint 8):** Procedural pixel-art grid rasterized to ImageTexture.
 
-* Cheap procedural generation (noise-based silhouettes, marching-squares-like logic, or signed-distance contours).
-* Avoid hand-drawing dozens of static sprites.
+* Noise-generated polygon silhouette → scanline-rasterized onto a 2D grid (cell_size = 4 world units per art pixel)
+* Edge detection (4-neighbor) for bright outline, interior fill with slight color variation
+* ImageTexture on Sprite2D — one-time CPU cost at spawn, zero per-frame
+* Grid stored as PackedByteArray for future mining (modify grid → regenerate texture)
+* AsteroidPalette resource for easy color scheme swapping
 
-Asteroid visuals are layered:
+**Next approach: Tangram Tile Assembly System**
 
-1. Core silhouette (pixel art)
-2. Lighting/shading pass
-3. Optional non-pixel blur/glow effects
+Replace per-pixel procedural coloring with pre-authored tile pieces assembled into each asteroid. This is the target visual system — the current procedural approach was a first pass.
+
+* **Variable-size tiles (tangram-style):** Large tiles (e.g. 8×8, 4×4 art pixels) fill interior regions, smaller tiles (2×2, 1×1) cover edges and corners. Greedy packing: scan grid for largest rectangle that fits, place tile, repeat with smaller sizes.
+* **Tile classification by neighborhood:** Each grid cell's cardinal neighbors determine which tile type to use (interior, edge-N, edge-S, corner-NE, etc.). 4-bit cardinal bitmask = 16 tile types. Optional 8-bit with diagonals = 47 cases (smoother corners, more art to author).
+* **Tile atlas:** Single PNG spritesheet with one tile per type per size. Pre-drawn in any pixel editor, visible in Godot's asset browser and editor.
+* **Two layers:**
+  1. **Structural base tiles** — define the asteroid's solid shape. These are placed during assembly and remain unchanged unless the specific piece is hit by mining/shooting.
+  2. **Decorative overlays** — craters, cracks, ore veins, surface texture. Sprites overlaid on top of base tiles. Can be added/removed without touching the base layer.
+* **Mining integration:** When a spot is shot, only the hit tile piece needs to change. Remaining pieces stay intact — no full texture rebuild.
+* **Splitting integration:** When an asteroid splits, each fragment is a subset of the original tile pieces. No regeneration needed — just partition the existing pieces between the two new bodies.
+* **Editor visibility:** Since tiles are real PNG assets, asteroid art is visible in Godot's editor and inspectable at design time.
+
+**Other rendering alternatives (lower priority):**
+
+* **Shader-based:** Fragment shader doing point-in-polygon + edge detection on GPU. Zero CPU cost but complex to maintain and harder for mining.
+* **Pre-generated pool:** N textures per size bucket, reused across asteroids. Fast but loses uniqueness; needs "fork on mine" logic.
+
+**Visual layers (target architecture):**
+
+1. Noise polygon silhouette → rasterized grid ← **implemented**
+2. Tangram tile assembly (base layer) ← **next sprint**
+3. Decorative overlays (craters, cracks, veins) ← **after base tiles work**
+4. Lighting/shading pass (shader)
+5. Optional non-pixel blur/glow effects
 
 ### 5.3 Interaction
 
@@ -250,7 +274,9 @@ Silence is allowed and encouraged.
 
 * ~~Background and first visual assets for asteroids~~ → Background implemented (starfield parallax), start menu added
 * ~~Collisions~~ → Implemented: impulse-based damage, momentum exchange, collision layers, asteroid rotation
-* Asteroid splitting
+* ~~Asteroid pixel-art visuals~~ → Implemented: grid-based ImageTexture, scanline rasterization, edge detection, AsteroidPalette, per-asteroid spawn budget, ChunkStreamer extraction
+* **Tangram tile assembly system** — variable-size pre-authored tiles, greedy packing, two-layer (structural + decorative), mining/splitting-ready
+* Asteroid splitting (simplified by tile system — fragment = subset of pieces)
 * Stream velocity
 * Basic enemies / hazards
 
