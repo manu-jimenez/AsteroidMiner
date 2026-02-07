@@ -13,4 +13,6 @@ script = ExtResource("1_f35hr")
 [node name="Collision" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_3suc8")
 
-[node name="Visual" type="Polygon2D" parent="."]
+[node name="Visual" type="Sprite2D" parent="."]
+centered = true
+texture_filter = 0

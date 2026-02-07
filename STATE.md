@@ -1,23 +1,33 @@
-# AsteroidMiner — Sprint 7 Snapshot (Current Game State)
+# AsteroidMiner — Sprint 8 Snapshot (Current Game State)
 
 ## 🎯 Current Sprint Status
 
-**Sprint 7: Health, Damage & Collision System** ✅ COMPLETE
+**Sprint 8: Pixel-Art Asteroid Visuals & Performance** ✅ COMPLETE
 
 ---
 
 ## 📋 Next Session Priorities
 
-1. **Visual polish**
+1. **Tangram Tile Assembly System** (major feature — next sprint)
+   - Replace per-pixel procedural coloring with pre-authored tile pieces
+   - Variable-size tiles (tangram-style): large pieces fill interior, smaller pieces at edges
+   - Greedy packing algorithm: largest rectangles first, then progressively smaller
+   - Two layers: structural base tiles + decorative overlays (craters, cracks, veins)
+   - Tile atlas: pre-drawn PNG spritesheet, editable in any pixel editor, visible in Godot
+   - Benefits: editor-visible art, easy iteration, mining = remove/modify hit piece only, splitting = subset of existing pieces (no regeneration)
+   - Needs careful design session before implementation
+
+2. **Visual polish (continued)**
    - Ship sprite (needs pixel art per GDD)
    - Thrust particle effects
    - Collision visual feedback (flash, screen shake, etc.)
 
-2. **Asteroid splitting**
+3. **Asteroid splitting**
    - Larger asteroids break into smaller rigid bodies when sufficiently damaged
    - Each piece maintains physics properties (velocity, angular momentum)
+   - With tile system: splitting becomes selecting which pieces belong to each fragment
 
-3. **Stream velocity**
+4. **Stream velocity**
    - Global flow direction for the asteroid field
    - Constant stream velocity (slow: 2–5 px/s comoving frame)
    - Mild per-asteroid velocity noise
@@ -31,13 +41,31 @@
 - No visual feedback for thrust (particle effects needed)
 - No visual feedback for collisions (flash/shake)
 - Tuning panel values not persisted between sessions
-- Cannot visually inspect asteroid chunks in Godot's 2D editor (Polygon2D visuals don't render in Remote view)
+- Cannot visually inspect asteroids in Godot's 2D editor Remote view (runtime-generated textures not visible — tile system will fix this since tiles are real asset PNGs)
 - Density slider defaults say 0.2x–3.0x but design intent was 0.2x–2.0x (slider max_value is 3.0)
 - Debug collision prints still active in ship.gd (useful for tuning, remove when stable)
 
 ---
 
 ## 📦 Recent Changes (Last Updated: February 2026)
+
+### Sprint 8: Pixel-Art Asteroid Visuals & Performance
+- ✅ Configured display: viewport 1920×1080, stretch mode `canvas_items`, aspect `expand` (maximizable window)
+- ✅ Set default texture filter to Nearest (pixel-art crisp edges)
+- ✅ Created `AsteroidPalette` resource (base_color, edge_color, color_variation) — easy palette swapping
+- ✅ Replaced Polygon2D visual with Sprite2D + procedural ImageTexture
+- ✅ Grid-based rasterization: noise polygon → scanline fill → 2D byte grid (1 = solid, 0 = empty)
+- ✅ Edge detection: 4-neighbor check, edge pixels colored near-white, interior bluish-gray with random variation
+- ✅ Floating pixel cleanup: pixels with ≤1 cardinal neighbor removed after rasterization (fixes sharp peak artifacts)
+- ✅ Uniform cell_size (default 4.0 world units per art pixel) — exported, tunable in inspector
+- ✅ PackedByteArray bulk pixel writes instead of per-pixel `set_pixel()` (~10-50x faster)
+- ✅ `Image.create_from_data()` for single-call image creation from raw RGBA bytes
+- ✅ Per-asteroid spawn budget: `max_asteroids_per_frame` (default 20) replaces `chunks_per_frame`. Two-phase: pre-compute chunk data (pure math, instant), then instantiate nodes up to budget per frame. Eliminates micro-teleport frame spikes.
+- ✅ Chunk queue sorted by distance to ship (closest chunks spawn first)
+- ✅ `_regenerate_texture_from_grid()` method ready for future mining (modify grid, call to update visual)
+- ✅ Extracted chunk streaming into `ChunkStreamer` node (`scripts/chunk_streamer.gd`) — `world.gd` went from ~600 to ~220 lines
+- ✅ Added PAUSED label (centered on screen, shown/hidden on pause toggle)
+- ✅ Documented rendering alternatives in GDD (tile-based, shader-based, pre-generated pool)
 
 ### Sprint 7: Health, Damage & Collision System
 - ✅ Added ship health system (0–100) with `max_health`, `health`, `heal_full()`, `is_alive()`
@@ -115,9 +143,9 @@ A 2D top-down space traversal prototype with **physics-based collision damage**.
 
 Fuel is a hard constraint (max 100): thrust consumes fuel continuously; when fuel hits zero the game pauses and shows "OUT OF FUEL — Press R to restart". When health reaches zero from collision damage, the game shows "SHIP DESTROYED — Press R to restart".
 
-The asteroid field feels infinite and coherent — revisiting the same world coordinates generates the same asteroids (deterministic). Asteroids vary in size following a power-law distribution (mostly small, occasionally large). **Asteroids have irregular, natural-looking shapes** generated via layered Perlin noise, with larger asteroids having more complex shapes.
+The asteroid field feels infinite and coherent — revisiting the same world coordinates generates the same asteroids (deterministic). Asteroids vary in size following a power-law distribution (mostly small, occasionally large). **Asteroids have irregular, natural-looking shapes** generated via layered Perlin noise, with larger asteroids having more complex shapes. **Asteroids are rendered as pixel-art**: each asteroid has a grid of art pixels (cell_size=4 world units each), with a bluish-gray interior and bright edge outline, giving a consistent retro look across all sizes.
 
-**Current limitations**: No mining mechanics, no asteroid splitting, ship sprite is placeholder.
+**Current limitations**: No mining mechanics, no asteroid splitting, ship sprite is placeholder. Asteroid texture generation causes some pop-in (staggered spawning mitigates but doesn't eliminate).
 
 ---
 
@@ -133,24 +161,30 @@ Inside it:
 
 - **Camera2D** is enabled and uses position smoothing.
 
+- **ChunkStreamer** (Node2D, `scripts/chunk_streamer.gd`) — owns all chunk streaming logic and all dynamically spawned asteroids. World calls `chunk_streamer.initialize()` once and `chunk_streamer.update_streaming(ship_pos)` each frame. All asteroid config exports live here.
+
 - **UI** (CanvasLayer) contains:
   - **TuningPanel** (PanelContainer) → VBoxContainer → five rows, each row has a label + slider for thrust, damp, turn, fuel burn, and damage_per_impulse.
   - **GameOverLabel** (Label) hidden by default, centered on screen, shows the out-of-fuel or ship-destroyed message.
+  - **PauseLabel** (Label) hidden by default, centered on screen, shows "PAUSED" when game is paused.
   - **StatusBars** (HBoxContainer) at bottom-left: FuelBox (FuelLabel + FuelBar) + Spacer + HealthBox (HealthLabel + HealthBar). Both bars are normalized to [0,1].
 
 - **StartMenu** (CanvasLayer, layer=10) contains:
   - CenterContainer → VBoxContainer with title label, power-law alpha slider (1.5–4.0), asteroid density slider (0.2x–3.0x), and "Press any key to start" label.
   - Hidden after game starts. Reappears on restart (scene reload).
 
-- **Asteroids** are spawned dynamically as children of World using the chunk streaming system. They are RigidBody2D instances from Asteroid.tscn with:
+- **Asteroids** are spawned dynamically as children of ChunkStreamer (two-phase: pre-compute data, then instantiate up to `max_asteroids_per_frame` per frame, queue sorted by distance to ship). They are RigidBody2D instances from Asteroid.tscn with:
   - `collision_layer = 2`, `collision_mask = 3` (collides with ship + other asteroids)
   - `frozen = false` after add_child (unfrozen for physics, but start with zero velocity)
   - `freeze_mode = FREEZE_MODE_KINEMATIC` (so they behave as normal dynamic bodies when unfrozen)
-  - Radius determines size (collision shape = CircleShape2D, visual = irregular Polygon2D from noise)
+  - Radius determines size (collision shape = CircleShape2D)
+  - Visual = Sprite2D with procedural ImageTexture (grid-rasterized pixel art, cell_size=4)
   - Mass = PI × radius² × density (density = 0.25)
   - `lock_rotation = false` (allows spin from collisions)
   - Each asteroid has a unique `noise_seed` for deterministic shape generation
   - `max_radius` tracks the actual furthest vertex extent (used for overlap checks)
+  - `grid` (PackedByteArray) stores solid/empty state per art pixel (ready for mining)
+  - `palette` (AsteroidPalette) defines colors — defaults to bluish-gray interior, near-white edge
 
 ---
 
@@ -166,19 +200,15 @@ The code uses these actions (must exist in Input Map):
 
 ---
 
-## 🌍 World Logic (world.gd)
+## 🌍 World Logic (world.gd, ~220 lines)
 
-**World** owns the "meta" loop: UI updates, tuning propagation, chunk streaming system, pause/restart/game-over state.
-
-### Chunk Streaming System
+**World** owns the "meta" loop: UI updates, tuning propagation, pause/restart/game-over state. Chunk streaming is delegated to ChunkStreamer.
 
 On `_ready()` it:
-1. Caches worst-case noise amplitude from Asteroid.tscn defaults (sum of all layer amplitudes)
-2. Calculates `screen_size` from viewport and camera zoom
-3. Calculates `chunk_size = screen_size.x * chunk_size_multiplier` (default 1.5)
-4. Calculates `spawn_radius` and `despawn_radius` based on screen size multiples
-5. Initializes ship fuel and health, UI, and tuning panel
-6. Enables camera and prints debug info
+1. Resolves camera reference
+2. Calls `chunk_streamer.initialize(viewport_size, camera_zoom)` to set up the streaming system
+3. Initializes ship fuel and health, UI, and tuning panel
+4. Enables camera and prints debug info
 
 During `_process(delta)` it:
 - Handles "restart" (always available, even on menu) — unpauses and reloads scene, then returns immediately to avoid accessing freed nodes
@@ -186,40 +216,41 @@ During `_process(delta)` it:
 - Updates the fuel bar and health bar every frame (normalized to max values)
 - Checks game over: fuel=0 → "OUT OF FUEL", health=0 → "SHIP DESTROYED"
 - Toggles tuning panel visibility
-- Toggles pause (only if not game over)
-- **Calls `_update_chunk_system()`** every frame when not paused
+- Toggles pause (only if not game over), shows/hides PauseLabel
+- **Calls `chunk_streamer.update_streaming(ship.global_position)`** every frame when not paused
 
 Start menu logic:
 - `_unhandled_input()` detects any key/click/button press and calls `_start_game()`
 - `_start_game()` sets `game_started = true`, hides menu, shows ship + UI, unfreezes ship
-- `_on_alpha_slider_changed()` updates `power_law_alpha` in real-time from slider
-- `_on_density_slider_changed()` multiplies default density (0.00003) by slider value
+- `_on_alpha_slider_changed()` updates `chunk_streamer.power_law_alpha` from slider
+- `_on_density_slider_changed()` sets `chunk_streamer.asteroid_density` (base density × multiplier)
 
-### Chunk System Methods
+## 🌐 Chunk Streaming (chunk_streamer.gd, ~310 lines)
 
-- `_update_chunk_system()`: Calls spawn and despawn logic
-- `_spawn_chunks_around(center)`: Iterates through chunk grid around ship, spawns any unvisited chunks within `spawn_radius`
-- `_spawn_chunk(chunk_key)`:
-  - Seeds RNG deterministically using `_hash_chunk(chunk_key)`
-  - Calculates asteroid count based on `chunk_size^2 * asteroid_density`
-  - For each asteroid: samples radius, computes worst-case radius, tries up to 10 random positions
-  - Checks overlap against same-chunk asteroids (`_is_spawn_point_clear`) and neighboring chunks (`_is_clear_of_neighbors`)
-  - Skips asteroid if no valid position found after 10 attempts
-  - Passes deterministic `noise_seed` to each asteroid via `rng.randi()`
-  - Stores actual `max_radius` (post-noise) for future overlap checks
-  - Debug prints spawned/total count per chunk
-- `_create_asteroid()`: Instantiates Asteroid.tscn, sets noise seed + position + radius, calls `add_child()` FIRST, then `asteroid.frozen = false`
-- `_despawn_far_asteroids(center)`: Removes asteroids beyond `despawn_radius`, cleans up empty chunks
+**ChunkStreamer** is a Node2D child of World that owns all chunk streaming logic and all dynamically spawned asteroid nodes.
 
-**Key detail**: `add_child()` must happen BEFORE setting `frozen = false`, because `_ready()` (triggered by `add_child`) calls `set_frozen(frozen=true)` from the default export value, which would re-freeze the asteroid.
+**Public API:**
+- `initialize(viewport_size, camera_zoom)`: Computes screen_size, chunk_size, spawn/despawn radii
+- `update_streaming(ship_pos)`: Queues chunks, pre-computes data, spawns asteroid nodes (budget-limited)
 
-**Export variables for tuning**:
+**Two-phase spawning:**
+- Phase 1 — Pre-compute: all queued chunks have their asteroid data computed (positions, radii, seeds) using pure math. This is instant (no scene tree work).
+- Phase 2 — Instantiate: up to `max_asteroids_per_frame` (default 20) actual nodes created from the pre-computed queue per frame.
+
+**Key methods:**
+- `_queue_chunks_around(center)`: Finds unspawned chunks within `spawn_radius`, sorts by distance
+- `_process_chunk_queue(ship_pos)`: Runs both phases
+- `_precompute_chunk(chunk_key)`: Seeds RNG deterministically, samples radii (power-law), finds non-overlapping positions (up to 10 attempts), queues data
+- `_create_asteroid()`: Instantiates Asteroid.tscn, sets properties, adds as child of ChunkStreamer
+- `_despawn_far_asteroids(center)`: Removes far asteroids, purges queued data for removed chunks
+
+**Export variables for tuning** (on ChunkStreamer node in inspector):
 - `chunk_size_multiplier`: How many screens wide is a chunk (default 1.5)
 - `asteroid_density`: Asteroids per square world unit (default 0.00001)
-- `spawn_radius_screens`: Spawn radius in screen sizes (default 3.5)
-- `despawn_radius_screens`: Despawn radius in screen sizes (default 5.0)
+- `spawn_radius_screens` / `despawn_radius_screens`: In screen sizes (default 1.5 / 2.5)
 - `radius_min` / `radius_max`: Asteroid size range (16.0 - 192.0)
 - `power_law_alpha`: Distribution shape parameter (default 2.2)
+- `max_asteroids_per_frame`: Per-frame node creation budget (default 20)
 - `global_seed`: Seed for deterministic generation (default 123456)
 
 ---
@@ -280,7 +311,15 @@ An asteroid is a **RigidBody2D** with an irregular procedural visual and a circu
   - r=48 → mass ≈ 1800 (gets nudged)
   - r=192 → mass ≈ 29000 (barely moves)
 
-- `visual` is a Polygon2D generated as a 48-point **irregular polygon** using layered Perlin noise.
+- `visual` is a **Sprite2D** with a procedurally generated **ImageTexture**:
+  - Noise polygon (48 vertices) → scanline-rasterized onto a 2D byte grid
+  - Grid cell_size = 4 world units per art pixel (uniform, exported, tunable)
+  - Edge detection (4-neighbor) → edge pixels colored with `palette.edge_color`
+  - Interior pixels colored with `palette.base_color` + random brightness variation
+  - Raw RGBA bytes built in a PackedByteArray → `Image.create_from_data()` → `ImageTexture`
+  - `grid` (PackedByteArray) persists for future mining (modify grid → call `_regenerate_texture_from_grid()`)
+
+- `palette` is an **AsteroidPalette** resource (base_color, edge_color, color_variation). Defaults created in `_ready()` if none assigned. Easy to swap for different color schemes.
 
 - `max_radius` tracks the actual furthest vertex distance from center (used by world.gd for overlap checks).
 
@@ -336,8 +375,11 @@ All tuning panel sliders are connected to `_on_tuning_changed()` which calls `_a
 
 ## 🎨 Visual State
 
+- **Display**: Viewport 1920×1080, stretch mode `canvas_items`, aspect `expand`, texture filter `Nearest`
 - **Ship**: Placeholder sprite (needs proper pixel art per GDD visual constraints)
-- **Asteroids**: Procedural irregular white polygons (48 vertices, layered Perlin noise)
+- **Asteroids**: Pixel-art ImageTextures (bluish-gray fill, near-white edges, cell_size=4)
+  - Palette: AsteroidPalette resource (`scripts/asteroid_palette.gd`) — easily swappable
+  - Grid stored per asteroid for future mining support
 - **Background**: Seamless tileable starfield (ParallaxBackground, 0.1x parallax scroll)
 - **UI**: Functional but basic styling
 
@@ -345,12 +387,15 @@ All tuning panel sliders are connected to `_on_tuning_changed()` which calls `_a
 
 ## 📊 Performance Characteristics
 
-- Chunk system spawns/despawns efficiently based on distance
+- **Per-asteroid spawn budget** (default 20/frame) — chunk data is pre-computed instantly (pure math), then nodes instantiated gradually. Eliminates frame spikes from chunk spawning.
+- Chunks are queued and sorted by distance — closest to ship spawn first
 - Deterministic generation means no cache needed for revisiting chunks (they regenerate identically)
-- Current density settings spawn ~10-20 asteroids per chunk
+- Current density settings spawn ~80 asteroids per chunk (~4 frames to fully populate a chunk at budget=20)
+- Texture generation uses **PackedByteArray bulk writes** + `Image.create_from_data()` (~10-50x faster than `set_pixel()`)
+- Scanline rasterization for polygon→grid is O(rows × edges), much faster than per-cell point-in-polygon
 - Overlap avoidance adds minor cost per chunk spawn (rejection sampling + neighbor checks)
-- Noise generation is one-time per asteroid at spawn (not per-frame)
-- Asteroids are now dynamic RigidBody2D with physics interactions (unfrozen after spawn)
+- Noise generation + texture creation are one-time per asteroid at spawn (not per-frame)
+- Asteroids are dynamic RigidBody2D with physics interactions
 - Chain reactions possible when ship collides into clusters — may need monitoring at high densities
 
 ---
@@ -369,6 +414,15 @@ These are explicitly **out of scope** until core loop is complete:
 ## 🎓 Learning Notes
 
 This sprint taught:
+- **`Image.set_pixel()` is slow** — each call crosses the GDScript↔engine boundary. Building a `PackedByteArray` of raw RGBA bytes and calling `Image.create_from_data()` once is 10-50x faster.
+- **Scanline rasterization** — for filling a polygon on a grid, iterate rows and find edge crossings per row (O(rows×edges)) instead of testing every cell (O(cells×edges))
+- **Two-phase spawning** — separate pre-computation (cheap math) from node instantiation (expensive). Budget the expensive part per-frame for smooth performance.
+- **Viewport stretch modes** — `viewport` mode renders at fixed resolution (pixel-perfect but rigid); `canvas_items` scales nodes (flexible resize, need Nearest filter for pixel art)
+- **Godot Remote scene tree** doesn't render runtime-generated textures in the 2D editor view — known limitation, not a bug
+- **Node extraction for maintainability** — moving self-contained systems (chunk streaming) into their own Node2D scripts keeps files manageable and reduces context needed per session
+- **Typed array `.pop_front()` returns Variant** — in GDScript with warnings-as-errors, use `array[0]` + `remove_at(0)` or explicit `as Type` cast instead
+
+Previous sprint taught:
 - **Collision layers/masks** — bit-field system for filtering which bodies interact
 - **`body_entered` signal timing** — fires AFTER Godot's physics solver, so `linear_velocity` is already post-bounce; must capture pre-collision velocity manually
 - **Godot physics tick order**: `_physics_process()` → physics step (collision detection + solver + `_integrate_forces`) → `body_entered` signals
