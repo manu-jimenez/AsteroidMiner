@@ -62,6 +62,18 @@ var _asteroid_max_amplitude: float = 0.45  # Cached worst-case total noise ampli
 func initialize(viewport_size: Vector2, camera_zoom: Vector2) -> void:
 	"""Set up chunk sizes and radii based on the viewport and camera.
 	Call this once from World._ready() after the camera is resolved."""
+	# Sync config values into our export vars so the streaming system
+	# uses persisted settings (world.gd may override some of these after).
+	chunk_size_multiplier = GameConfig.chunk_size_multiplier
+	asteroid_density = GameConfig.asteroid_density
+	spawn_radius_screens = GameConfig.spawn_radius_screens
+	despawn_radius_screens = GameConfig.despawn_radius_screens
+	radius_min = GameConfig.radius_min
+	radius_max = GameConfig.radius_max
+	power_law_alpha = GameConfig.power_law_alpha
+	global_seed = GameConfig.global_seed
+	max_asteroids_per_frame = GameConfig.max_asteroids_per_frame
+
 	# Cache worst-case noise amplitude (sum of all layers) for overlap estimation
 	var _tmp := AsteroidScene.instantiate()
 	_asteroid_max_amplitude = _tmp.noise_amplitude + _tmp.medium_amplitude + _tmp.large_amplitude
