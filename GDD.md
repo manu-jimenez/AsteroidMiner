@@ -250,6 +250,7 @@ Silence is allowed and encouraged.
 * Physics: Godot 2D physics
 * Deterministic chunk seeding
 * Data-oriented approach for asteroids
+* **GameConfig autoload** — all tunable parameters (ship, chunks, asteroids, display) persisted to `user://config.cfg` via Godot `ConfigFile`
 
 ---
 

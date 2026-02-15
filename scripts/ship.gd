@@ -35,16 +35,28 @@ var _dbg_accum := 0.0
 func _ready() -> void:
 	print("Ship freeze=", freeze, " custom_integrator=", custom_integrator)
 
+	# Initialize from persisted config
+	thrust_force = GameConfig.ship_thrust_force
+	turn_speed = GameConfig.ship_turn_speed
+	max_speed = GameConfig.ship_max_speed
+	max_fuel = GameConfig.ship_max_fuel
+	fuel = GameConfig.ship_max_fuel
+	fuel_burn_per_sec = GameConfig.ship_fuel_burn_per_sec
+	max_health = GameConfig.ship_max_health
+	health = GameConfig.ship_max_health
+	damage_per_impulse = GameConfig.ship_damage_per_impulse
+	damage_cooldown = GameConfig.ship_damage_cooldown
+
 	# Un poco de amortiguación arcade
-	linear_damp = 0.9
+	linear_damp = GameConfig.ship_linear_damp
 	angular_damp = 6.0
 	gravity_scale = 0.0
 
 	lock_rotation = true
 	angular_velocity = 0.0
 
-	# Ship mass based on its polygon area (~208 sq px for the triangle)
-	mass = 200.0
+	# Ship mass from config
+	mass = GameConfig.ship_mass
 
 	# Connect collision signal (contact_monitor + max_contacts_reported set in scene)
 	body_entered.connect(_on_body_entered)

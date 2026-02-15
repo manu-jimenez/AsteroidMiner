@@ -59,9 +59,25 @@ func _ready() -> void:
 	angular_damp = 0.2
 	lock_rotation = false  # Allow rotation from collisions
 
-	# Create default palette if none assigned
+	# Load visual/physics defaults from persisted config
+	cell_size = GameConfig.asteroid_cell_size
+	density = GameConfig.asteroid_density_mass
+	noise_amplitude = GameConfig.noise_amplitude
+	noise_freq_min = GameConfig.noise_freq_min
+	noise_freq_max = GameConfig.noise_freq_max
+	medium_threshold = GameConfig.medium_threshold
+	medium_amplitude = GameConfig.medium_amplitude
+	medium_frequency = GameConfig.medium_frequency
+	large_threshold = GameConfig.large_threshold
+	large_amplitude = GameConfig.large_amplitude
+	large_frequency = GameConfig.large_frequency
+
+	# Create palette from config colors (or defaults if no config yet)
 	if palette == null:
 		palette = AsteroidPalette.new()
+	palette.base_color = GameConfig.asteroid_base_color
+	palette.edge_color = GameConfig.asteroid_edge_color
+	palette.color_variation = GameConfig.asteroid_color_variation
 
 	# If radius was assigned before entering tree, apply it now.
 	if _pending_radius_apply:

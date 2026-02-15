@@ -42,7 +42,8 @@ func _ready() -> void:
 	var camera_zoom := cam.zoom if cam else Vector2.ONE
 	chunk_streamer.initialize(viewport_size, camera_zoom)
 
-	# Inicializa UI
+	# Initialize slider positions from persisted config, then apply to ship
+	_sync_sliders_from_config()
 	_apply_tuning_from_sliders()
 
 	ship.refuel_full()
@@ -66,15 +67,20 @@ func _ready() -> void:
 	print("Camera enabled=", cam.enabled)
 	print("Active viewport cam =", get_viewport().get_camera_2d(), " my cam =", cam)
 
-	# Start menu setup: sync sliders to current values and connect signals
-	sld_alpha.value = chunk_streamer.power_law_alpha
-	lbl_alpha_value.text = "%.1f" % chunk_streamer.power_law_alpha
+	# Start menu setup: sync sliders to persisted config and connect signals
+	sld_alpha.value = GameConfig.power_law_alpha
+	lbl_alpha_value.text = "%.1f" % GameConfig.power_law_alpha
 	sld_alpha.value_changed.connect(_on_alpha_slider_changed)
 
-	# Density slider: value is a multiplier (0.2x – 2.0x), default 1.0x
-	sld_density.value = 1.0
-	lbl_density_value.text = "1.0x"
+	# Density slider: value is a multiplier (0.2x – 3.0x)
+	sld_density.value = GameConfig.density_multiplier
+	lbl_density_value.text = "%.1fx" % GameConfig.density_multiplier
 	sld_density.value_changed.connect(_on_density_slider_changed)
+
+	# Apply persisted start-menu values to chunk_streamer
+	chunk_streamer.power_law_alpha = GameConfig.power_law_alpha
+	var default_density: float = 0.00003
+	chunk_streamer.asteroid_density = default_density * GameConfig.density_multiplier
 
 	# Hide gameplay elements until the player starts
 	ship.visible = false
@@ -166,13 +172,15 @@ func _on_alpha_slider_changed(value: float) -> void:
 	"""Update power_law_alpha in real-time as the player adjusts the slider."""
 	chunk_streamer.power_law_alpha = value
 	lbl_alpha_value.text = "%.1f" % value
+	GameConfig.power_law_alpha = value
 
 
 func _on_density_slider_changed(value: float) -> void:
-	"""Update asteroid_density based on multiplier slider (0.2x – 2.0x)."""
+	"""Update asteroid_density based on multiplier slider (0.2x – 3.0x)."""
 	var default_density: float = 0.00003
 	chunk_streamer.asteroid_density = default_density * value
 	lbl_density_value.text = "%.1fx" % value
+	GameConfig.density_multiplier = value
 
 
 func _start_game() -> void:
@@ -201,6 +209,14 @@ func _start_game() -> void:
 func _on_tuning_changed(_v: float) -> void:
 	_apply_tuning_from_sliders()
 
+func _sync_sliders_from_config() -> void:
+	"""Set slider positions from GameConfig (persisted values)."""
+	sld_thrust.value = GameConfig.ship_thrust_force
+	sld_damp.value = GameConfig.ship_linear_damp
+	sld_turn.value = GameConfig.ship_turn_speed
+	sld_fuel_burn.value = GameConfig.ship_fuel_burn_per_sec
+	sld_dmg.value = GameConfig.ship_damage_per_impulse
+
 func _apply_tuning_from_sliders() -> void:
 	var thrust := float(sld_thrust.value)
 	var damp := float(sld_damp.value)
@@ -213,7 +229,7 @@ func _apply_tuning_from_sliders() -> void:
 	ship.turn_speed = turn
 	ship.linear_damp = damp 	# Propiedad directa del RigidBody2D
 	ship.fuel_burn_per_sec = fuel_burn
-	ship.max_fuel = 100.0
+	ship.max_fuel = GameConfig.ship_max_fuel
 	ship.damage_per_impulse = dmg
 
 	lbl_thrust.text = "Thrust: %d" % int(thrust)
@@ -221,3 +237,10 @@ func _apply_tuning_from_sliders() -> void:
 	lbl_turn.text = "Turn: %.1f" % turn
 	lbl_fuel_burn.text = "Fuel burn: %.0f/s" % fuel_burn
 	lbl_dmg.text = "Dmg/impulse: %.4f" % dmg
+
+	# Persist to config
+	GameConfig.ship_thrust_force = thrust
+	GameConfig.ship_linear_damp = damp
+	GameConfig.ship_turn_speed = turn
+	GameConfig.ship_fuel_burn_per_sec = fuel_burn
+	GameConfig.ship_damage_per_impulse = dmg

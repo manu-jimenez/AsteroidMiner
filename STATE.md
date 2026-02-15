@@ -40,7 +40,7 @@
 - Ship sprite is placeholder (needs pixel art per GDD)
 - No visual feedback for thrust (particle effects needed)
 - No visual feedback for collisions (flash/shake)
-- Tuning panel values not persisted between sessions
+- ~~Tuning panel values not persisted between sessions~~ → Fixed: GameConfig autoload persists all parameters to `user://config.cfg`
 - Cannot visually inspect asteroids in Godot's 2D editor Remote view (runtime-generated textures not visible — tile system will fix this since tiles are real asset PNGs)
 - Density slider defaults say 0.2x–3.0x but design intent was 0.2x–2.0x (slider max_value is 3.0)
 - Debug collision prints still active in ship.gd (useful for tuning, remove when stable)
@@ -369,7 +369,7 @@ The start menu has additional sliders for:
 - **Power-law alpha** (1.5–4.0, default 2.2) — asteroid size distribution
 - **Asteroid density** (0.2x–3.0x, default 1.0x) — multiplier on base density
 
-All tuning panel sliders are connected to `_on_tuning_changed()` which calls `_apply_tuning_from_sliders()`. Values are **not persisted** between sessions.
+All tuning panel sliders are connected to `_on_tuning_changed()` which calls `_apply_tuning_from_sliders()`. Values are **persisted** to `user://config.cfg` via the `GameConfig` autoload singleton (36 parameters across ship, chunks, asteroid visuals, noise, and display).
 
 ---
 
