@@ -278,7 +278,8 @@ Silence is allowed and encouraged.
 * ~~Asteroid pixel-art visuals~~ → Implemented: grid-based ImageTexture, scanline rasterization, edge detection, AsteroidPalette, per-asteroid spawn budget, ChunkStreamer extraction
 * **Tangram tile assembly system** — variable-size pre-authored tiles, greedy packing, two-layer (structural + decorative), mining/splitting-ready
 * Asteroid splitting (simplified by tile system — fragment = subset of pieces)
-* Stream velocity
+* ~~Stream velocity~~ → Implemented: diagonal drift, inversely proportional to radius (small debris swept along, large rocks nearly stationary), per-asteroid noise, angular damp for natural spin decay
+* ~~Visual feedback (collision/thrust)~~ → Implemented: trauma-based screen shake, full-screen hit flash (alpha + duration scale with damage), thrust particle trail
 * Basic enemies / hazards
 
 ---
