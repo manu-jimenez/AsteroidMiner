@@ -40,6 +40,11 @@ var max_asteroids_per_frame: int = 20 : set = _set_max_asteroids_per_frame
 # Density multiplier (the start-menu slider value, 0.2–3.0)
 var density_multiplier: float = 1.0 : set = _set_density_multiplier
 
+# Stream velocity
+var stream_velocity: Vector2 = Vector2(60.0, 25.0) : set = _set_stream_velocity
+var stream_velocity_noise: float = 8.0 : set = _set_stream_velocity_noise
+var angular_velocity_range: float = 0.05 : set = _set_angular_velocity_range
+
 # ============================================================
 # ASTEROID VISUAL / PHYSICS
 # ============================================================
@@ -120,6 +125,9 @@ func _load() -> void:
 	global_seed = _cfg.get_value("chunks", "global_seed", global_seed)
 	max_asteroids_per_frame = _cfg.get_value("chunks", "max_asteroids_per_frame", max_asteroids_per_frame)
 	density_multiplier = _cfg.get_value("chunks", "density_multiplier", density_multiplier)
+	stream_velocity = _cfg.get_value("chunks", "stream_velocity", stream_velocity)
+	stream_velocity_noise = _cfg.get_value("chunks", "stream_velocity_noise", stream_velocity_noise)
+	angular_velocity_range = _cfg.get_value("chunks", "angular_velocity_range", angular_velocity_range)
 
 	# Asteroid visual/physics
 	asteroid_cell_size = _cfg.get_value("asteroid", "cell_size", asteroid_cell_size)
@@ -168,6 +176,9 @@ func save() -> void:
 	_cfg.set_value("chunks", "global_seed", global_seed)
 	_cfg.set_value("chunks", "max_asteroids_per_frame", max_asteroids_per_frame)
 	_cfg.set_value("chunks", "density_multiplier", density_multiplier)
+	_cfg.set_value("chunks", "stream_velocity", stream_velocity)
+	_cfg.set_value("chunks", "stream_velocity_noise", stream_velocity_noise)
+	_cfg.set_value("chunks", "angular_velocity_range", angular_velocity_range)
 
 	# Asteroid visual/physics
 	_cfg.set_value("asteroid", "cell_size", asteroid_cell_size)
@@ -250,6 +261,12 @@ func _set_max_asteroids_per_frame(v: int) -> void:
 	max_asteroids_per_frame = v; _auto_save()
 func _set_density_multiplier(v: float) -> void:
 	density_multiplier = v; _auto_save()
+func _set_stream_velocity(v: Vector2) -> void:
+	stream_velocity = v; _auto_save()
+func _set_stream_velocity_noise(v: float) -> void:
+	stream_velocity_noise = v; _auto_save()
+func _set_angular_velocity_range(v: float) -> void:
+	angular_velocity_range = v; _auto_save()
 
 # Asteroid visual
 func _set_asteroid_cell_size(v: float) -> void:

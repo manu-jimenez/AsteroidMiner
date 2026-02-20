@@ -55,8 +55,10 @@ var grid_height: int = 0
 
 func _ready() -> void:
 	gravity_scale = 0.0
-	linear_damp = 0.2
-	angular_damp = 0.2
+	linear_damp_mode = RigidBody2D.DAMP_MODE_REPLACE  # Override project default, don't combine
+	linear_damp = 0.0   # No drag — asteroids in space coast indefinitely
+	angular_damp_mode = RigidBody2D.DAMP_MODE_REPLACE
+	angular_damp = 0.15  # Gentle spin decay — collisions/mining set the spin, it fades naturally
 	lock_rotation = false  # Allow rotation from collisions
 
 	# Load visual/physics defaults from persisted config
