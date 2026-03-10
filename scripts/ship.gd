@@ -30,6 +30,30 @@ var _damage_timer: float = 0.0  # Counts down to 0; immune while > 0
 # both see post-collision velocities within the same physics tick.
 var _prev_frame_velocity: Vector2 = Vector2.ZERO
 
+# ============================================================
+# VISUAL FEEDBACK STATE
+# ============================================================
+
+# Screen shake — "trauma" model: shake intensity = trauma², decays over time.
+# A hit adds trauma (0–1); the camera applies random offset scaled by trauma².
+var _trauma: float = 0.0
+const TRAUMA_DECAY: float = 1.8   # How fast trauma fades per second
+const SHAKE_MAX_OFFSET: float = 18.0  # Max pixel displacement at full trauma
+
+# Full-screen hit flash — a white ColorRect on a CanvasLayer, fades out over _flash_duration.
+# Duration and peak alpha scale with damage so a graze is subtle, a hard hit is blinding.
+var _flash_timer: float = 0.0
+var _flash_duration: float = 0.15   # Set per-hit based on damage
+var _flash_peak_alpha: float = 0.0  # Set per-hit based on damage
+const FLASH_MAX_ALPHA: float = 0.55  # Cap: opacity at a full-health (100 HP) hit
+
+# Cached node references (set in _ready)
+var _polygon: Polygon2D
+var _camera: Camera2D
+var _thruster: GPUParticles2D
+var _flash_rect: ColorRect       # Full-screen overlay for hit flash
+var _camera_rest_offset: Vector2 = Vector2.ZERO  # Camera's baseline offset
+
 var _dbg_accum := 0.0
 
 func _ready() -> void:
@@ -61,6 +85,53 @@ func _ready() -> void:
 	# Connect collision signal (contact_monitor + max_contacts_reported set in scene)
 	body_entered.connect(_on_body_entered)
 
+	# Cache visual nodes
+	_polygon = $Polygon2D
+	_camera = $Camera2D
+
+	# Full-screen hit flash: CanvasLayer so it sits above everything (world, UI, etc.)
+	# ColorRect anchored to the full viewport — unaffected by camera position or zoom.
+	var flash_layer := CanvasLayer.new()
+	flash_layer.layer = 99  # On top of all other layers
+	add_child(flash_layer)
+	_flash_rect = ColorRect.new()
+	_flash_rect.color = Color(1.0, 1.0, 1.0, 0.0)  # White, fully transparent at rest
+	_flash_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Don't block input
+	flash_layer.add_child(_flash_rect)
+
+	# Build thrust particle emitter in code (no scene edit needed)
+	_thruster = GPUParticles2D.new()
+	_thruster.name = "Thruster"
+	add_child(_thruster)
+
+	# Particles emit from behind the ship (negative X = tail in ship-local space)
+	_thruster.position = Vector2(-12.0, 0.0)
+	_thruster.emitting = false
+	_thruster.amount = 24
+	_thruster.lifetime = 0.35
+	_thruster.explosiveness = 0.0   # Continuous stream, not burst
+	_thruster.one_shot = false
+	_thruster.local_coords = false  # Particles persist in world space after leaving ship
+
+	var pm := ParticleProcessMaterial.new()
+	# Emit in a narrow cone pointing backward (180° = ship's -X axis)
+	pm.direction = Vector3(-1.0, 0.0, 0.0)
+	pm.spread = 18.0          # Narrow cone (degrees)
+	pm.initial_velocity_min = 80.0
+	pm.initial_velocity_max = 160.0
+	pm.gravity = Vector3.ZERO # Space — no gravity
+	pm.scale_min = 2.5
+	pm.scale_max = 5.0
+	# Fade out over lifetime
+	var grad := Gradient.new()
+	grad.set_color(0, Color(1.0, 0.7, 0.2, 0.9))   # Hot orange at birth
+	grad.set_color(1, Color(0.4, 0.2, 0.1, 0.0))   # Dark ember, fully transparent at death
+	var color_ramp := GradientTexture1D.new()
+	color_ramp.gradient = grad
+	pm.color_ramp = color_ramp
+	_thruster.process_material = pm
+
 func _turn_input() -> float:
 	var t := 0.0
 	if Input.is_action_pressed("turn_left"):
@@ -73,6 +144,37 @@ func _process(delta: float) -> void:
 	# While paused, physics isn't running, so rotate visually here
 	if get_tree().paused:
 		rotation += _turn_input() * turn_speed * delta
+
+	# --- Full-screen hit flash ---
+	# Alpha decays linearly from peak to 0 over _flash_duration.
+	if _flash_timer > 0.0:
+		_flash_timer -= delta
+		var t := _flash_timer / _flash_duration  # 1.0 at hit, 0.0 when done
+		if _flash_rect:
+			_flash_rect.color.a = t * _flash_peak_alpha
+	else:
+		if _flash_rect:
+			_flash_rect.color.a = 0.0
+
+	# --- Screen shake (trauma model) ---
+	_trauma = maxf(_trauma - TRAUMA_DECAY * delta, 0.0)
+	if _camera:
+		if _trauma > 0.001:
+			var shake := _trauma * _trauma  # Quadratic: feels more natural than linear
+			# Use time-based noise for smooth random shake
+			var t := Time.get_ticks_msec() * 0.05
+			var ox := sin(t * 7.3 + 1.0) * shake * SHAKE_MAX_OFFSET
+			var oy := sin(t * 6.1 + 2.5) * shake * SHAKE_MAX_OFFSET
+			_camera.offset = _camera_rest_offset + Vector2(ox, oy)
+		else:
+			_camera.offset = _camera_rest_offset
+
+	# --- Thrust trail ---
+	if _thruster:
+		var thrusting := Input.is_action_pressed("thrust") and fuel > 0.0 and not get_tree().paused
+		_thruster.emitting = thrusting
+		# Rotate emitter to always point backward in world space
+		_thruster.global_rotation = global_rotation
 
 func _physics_process(delta: float) -> void:
 	# Tick damage cooldown
@@ -174,6 +276,14 @@ func _on_body_entered(body: Node) -> void:
 	# Apply damage
 	health = max(0.0, health - damage)
 	_damage_timer = damage_cooldown
+
+	# Visual feedback — both effects scale with damage fraction (0–1 of max health)
+	var damage_frac := clampf(damage / max_health, 0.0, 1.0)
+	_trauma = minf(_trauma + maxf(damage_frac, 0.05), 1.0)
+	# Flash: duration 0.1s (graze) → 0.5s (near-fatal), peak alpha scales with damage too
+	_flash_duration = lerpf(0.1, 0.5, damage_frac)
+	_flash_peak_alpha = lerpf(0.1, FLASH_MAX_ALPHA, damage_frac)
+	_flash_timer = _flash_duration
 
 	print("COLLISION! ast_r=%.0f ast_mass=%.0f ship_mass=%.0f | prev_vel=(%.0f,%.0f) ast_vel=(%.0f,%.0f) post_vel=(%.0f,%.0f) | rel_speed=%.0f reduced_mass=%.1f impulse=%.0f damage=%.1f health=%.1f" \
 		% [asteroid.radius, m_ast, m_ship,

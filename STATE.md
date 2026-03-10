@@ -1,8 +1,8 @@
-# AsteroidMiner — Sprint 8 Snapshot (Current Game State)
+# AsteroidMiner — Sprint 9 Snapshot (Current Game State)
 
 ## 🎯 Current Sprint Status
 
-**Sprint 8: Pixel-Art Asteroid Visuals & Performance** ✅ COMPLETE
+**Sprint 9: Stream Velocity & Visual Feedback** ✅ COMPLETE
 
 ---
 
@@ -17,20 +17,15 @@
    - Benefits: editor-visible art, easy iteration, mining = remove/modify hit piece only, splitting = subset of existing pieces (no regeneration)
    - Needs careful design session before implementation
 
-2. **Visual polish (continued)**
-   - Ship sprite (needs pixel art per GDD)
-   - Thrust particle effects
-   - Collision visual feedback (flash, screen shake, etc.)
-
-3. **Asteroid splitting**
+2. **Asteroid splitting**
    - Larger asteroids break into smaller rigid bodies when sufficiently damaged
    - Each piece maintains physics properties (velocity, angular momentum)
    - With tile system: splitting becomes selecting which pieces belong to each fragment
 
-4. **Stream velocity**
-   - Global flow direction for the asteroid field
-   - Constant stream velocity (slow: 2–5 px/s comoving frame)
-   - Mild per-asteroid velocity noise
+3. **Ship sprite**
+   - Replace placeholder triangle with proper 32×32 px pixel art
+   - Per GDD: ≥2px thick extremities, clear front/back/side silhouette
+   - Diegetic fuel indicator integrated into sprite
 
 ---
 
@@ -38,8 +33,8 @@
 
 - Collision shape is CircleShape2D (base radius) while visual is irregular — minor mismatch at noise edges
 - Ship sprite is placeholder (needs pixel art per GDD)
-- No visual feedback for thrust (particle effects needed)
-- No visual feedback for collisions (flash/shake)
+- ~~No visual feedback for thrust~~ → Fixed: GPUParticles2D thrust trail
+- ~~No visual feedback for collisions~~ → Fixed: screen shake + full-screen flash
 - ~~Tuning panel values not persisted between sessions~~ → Fixed: GameConfig autoload persists all parameters to `user://config.cfg`
 - Cannot visually inspect asteroids in Godot's 2D editor Remote view (runtime-generated textures not visible — tile system will fix this since tiles are real asset PNGs)
 - Density slider defaults say 0.2x–3.0x but design intent was 0.2x–2.0x (slider max_value is 3.0)
@@ -48,6 +43,18 @@
 ---
 
 ## 📦 Recent Changes (Last Updated: February 2026)
+
+### Sprint 9: Stream Velocity & Visual Feedback
+- ✅ **Stream velocity**: asteroid field now drifts diagonally (configurable direction + speed)
+- ✅ **Inverse-radius scaling**: small debris gets full stream velocity; large rocks nearly stationary (`stream_scale = radius_min / radius`)
+- ✅ **Per-asteroid velocity noise**: each rock varies ±`stream_velocity_noise` px/s from base (also scaled by radius), preventing lock-step motion
+- ✅ **Angular velocity at spawn**: tiny random spin (±0.05 rad/s default); `angular_damp = 0.15` (REPLACE mode) so spin decays naturally
+- ✅ **Fixed asteroid linear damping**: `linear_damp = 0.0` with `DAMP_MODE_REPLACE` — asteroids now coast indefinitely in space (was wrongly using project default damp)
+- ✅ **Screen shake**: trauma model — collision adds trauma proportional to `damage/max_health`; shake intensity = trauma², decays at 1.8/s
+- ✅ **Full-screen hit flash**: `ColorRect` on `CanvasLayer(99)`, peak alpha and duration both scale with damage (graze ~0.1s/10% alpha → near-fatal ~0.5s/55% alpha)
+- ✅ **Thrust particle trail**: `GPUParticles2D` built in code, orange→ember color gradient, narrow 18° cone, `local_coords=false` so particles linger in world space
+- ✅ **GameConfig extended**: `stream_velocity`, `stream_velocity_noise`, `angular_velocity_range` persisted to config.cfg
+- ✅ **Config file wins over code defaults**: documented — always edit `user://config.cfg` directly when live-tuning
 
 ### Sprint 8: Pixel-Art Asteroid Visuals & Performance
 - ✅ Configured display: viewport 1920×1080, stretch mode `canvas_items`, aspect `expand` (maximizable window)
@@ -137,9 +144,13 @@
 
 ## 🎮 What the Game Is Right Now
 
-A 2D top-down space traversal prototype with **physics-based collision damage**. The game opens with a **start menu** showing "ASTEROID MINER" over a scrolling starfield background, where you can tweak the power-law alpha and asteroid density before pressing any key to start. You pilot a ship with Asteroids-style thrust and turning in zero-gravity 2D space. The game generates an **infinite procedural asteroid field** using a chunk streaming system — asteroids spawn ahead of you and despawn behind as you explore.
+A 2D top-down space traversal prototype with **physics-based collision damage and a living asteroid stream**. The game opens with a **start menu** showing "ASTEROID MINER" over a scrolling starfield background, where you can tweak the power-law alpha and asteroid density before pressing any key to start. You pilot a ship with Asteroids-style thrust and turning in zero-gravity 2D space. The game generates an **infinite procedural asteroid field** using a chunk streaming system — asteroids spawn ahead of you and despawn behind as you explore.
 
-**Collisions are physically simulated**: the ship and asteroids exchange momentum realistically. Small asteroids get knocked around, medium ones get nudged, and large ones barely move. **Collision damage** is proportional to the impulse exchanged (relative speed × reduced mass), so grazing a small rock does little damage while slamming into a large asteroid at full speed is near-fatal. Asteroids spin naturally from collision impacts.
+**The asteroid field drifts**: small debris is swept along a global stream velocity (diagonal by default), while large rocks are nearly stationary — velocity scales inversely with radius. Each asteroid also has a small random velocity offset and gentle spin that decays naturally over time.
+
+**Collisions are physically simulated**: the ship and asteroids exchange momentum realistically. Small asteroids get knocked around, medium ones get nudged, and large ones barely move. **Collision damage** is proportional to the impulse exchanged (relative speed × reduced mass), so grazing a small rock does little damage while slamming into a large asteroid at full speed is near-fatal. Asteroids spin naturally from collision impacts. **Hits are felt**: a full-screen white flash (intensity and duration proportional to damage) and camera shake (trauma model) make every collision register.
+
+**Thrust is visible**: a particle trail of orange embers streams behind the ship while thrusting.
 
 Fuel is a hard constraint (max 100): thrust consumes fuel continuously; when fuel hits zero the game pauses and shows "OUT OF FUEL — Press R to restart". When health reaches zero from collision damage, the game shows "SHIP DESTROYED — Press R to restart".
 
@@ -271,7 +282,7 @@ Movement is split across callbacks:
   - Sets `state.angular_velocity = 0.0` every step to prevent collision torque from spinning the ship
   - If not paused, reads turn input and directly modifies `state.transform` rotation by `turn_speed * state.step`
 
-- `_process(delta)`: If the tree is paused, still rotates the ship visually using input (turn while paused)
+- `_process(delta)`: If the tree is paused, still rotates the ship visually; also drives hit flash, screen shake, and thrust trail every frame
 
 ### Collision Handling
 
@@ -412,6 +423,14 @@ These are explicitly **out of scope** until core loop is complete:
 ---
 
 ## 🎓 Learning Notes
+
+Sprint 9 taught:
+- **`DAMP_MODE_REPLACE` vs `DAMP_MODE_COMBINE`** — Godot's default damp mode adds your value on top of the project physics setting. Use `DAMP_MODE_REPLACE` to get exactly the value you set and ignore the global default. This was silently killing asteroid velocity.
+- **Config file wins over code defaults** — `GameConfig._load()` runs at startup and overwrites all code defaults from `user://config.cfg`. To tune live, edit the cfg file directly; code defaults only matter on first launch.
+- **Trauma model for screen shake** — instead of a fixed shake magnitude, store a `trauma` value (0–1) and apply `shake = trauma²`. Quadratic falloff feels more natural. Add trauma on hit, decay over time.
+- **CanvasLayer for screen-space effects** — a `ColorRect` on a `CanvasLayer` with high layer index renders on top of everything (world, UI, camera transforms) and is the cleanest way to do full-screen overlays like hit flash.
+- **GPUParticles2D in code** — all particle properties (material, gradient, spread, velocity) can be set up entirely in `_ready()` without touching the scene file. `local_coords = false` makes particles persist in world space after emission.
+- **Inverse-radius velocity scaling** — `scale = radius_min / radius` gives a physically motivated falloff: smallest rock = full velocity, largest rock = barely moves. Clean one-liner, visually convincing.
 
 This sprint taught:
 - **`Image.set_pixel()` is slow** — each call crosses the GDScript↔engine boundary. Building a `PackedByteArray` of raw RGBA bytes and calling `Image.create_from_data()` once is 10-50x faster.

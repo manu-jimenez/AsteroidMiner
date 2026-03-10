@@ -27,6 +27,17 @@ class_name ChunkStreamer
 # Global seed for deterministic generation
 @export var global_seed: int = 123456
 
+# Stream velocity: global drift direction for the asteroid field (world units/sec).
+# Asteroids spawn with this as base velocity + small per-asteroid noise.
+# GDD §4.3: slow constant flow (2–5 px/s) makes the field feel like a living medium.
+@export var stream_velocity: Vector2 = Vector2(3.0, 0.0)
+
+# Per-asteroid velocity noise magnitude (world units/sec, added randomly in each axis).
+@export var stream_velocity_noise: float = 1.5
+
+# Per-asteroid angular velocity range (radians/sec). Small values give natural slow spin.
+@export var angular_velocity_range: float = 0.3
+
 # Staggered asteroid spawning — prevents frame spikes by spreading work across frames.
 # Instead of spawning whole chunks, we pre-compute asteroid data for queued chunk, 
 # then add asteroid nodes up to max_asteroids_per_frame.
@@ -73,6 +84,9 @@ func initialize(viewport_size: Vector2, camera_zoom: Vector2) -> void:
 	power_law_alpha = GameConfig.power_law_alpha
 	global_seed = GameConfig.global_seed
 	max_asteroids_per_frame = GameConfig.max_asteroids_per_frame
+	stream_velocity = GameConfig.stream_velocity
+	stream_velocity_noise = GameConfig.stream_velocity_noise
+	angular_velocity_range = GameConfig.angular_velocity_range
 
 	# Cache worst-case noise amplitude (sum of all layers) for overlap estimation
 	var _tmp := AsteroidScene.instantiate()
@@ -403,9 +417,20 @@ func _create_asteroid(world_pos: Vector2, radius: float, asteroid_seed: int = 0)
 	asteroid.position = world_pos
 	asteroid.radius = radius  # This will trigger the asteroid's setter
 
-	# No initial velocity (stream velocity deferred to later sprint)
-	asteroid.linear_velocity = Vector2.ZERO
-	asteroid.angular_velocity = 0.0
+	# Stream velocity: inversely proportional to radius — small debris drifts with the stream,
+	# large rocks are too massive to be swept along. Scale factor: radius_min / radius,
+	# so the smallest asteroid gets full stream velocity, larger ones get less.
+	var stream_scale := radius_min / radius
+	var vel_rng := RandomNumberGenerator.new()
+	vel_rng.seed = asteroid_seed + 99991  # Offset to decouple from shape noise
+	var vel_noise := Vector2(
+		vel_rng.randf_range(-stream_velocity_noise, stream_velocity_noise),
+		vel_rng.randf_range(-stream_velocity_noise, stream_velocity_noise)
+	) * stream_scale
+	asteroid.linear_velocity = stream_velocity * stream_scale + vel_noise
+
+	# Small random spin — makes the field feel alive without wild tumbling.
+	asteroid.angular_velocity = vel_rng.randf_range(-angular_velocity_range, angular_velocity_range)
 
 	# Add to scene FIRST — _ready() runs here and calls set_frozen(frozen=true)
 	add_child(asteroid)
